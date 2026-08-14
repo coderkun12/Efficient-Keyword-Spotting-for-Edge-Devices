@@ -68,6 +68,7 @@ Input (mel-spectrogram)
 ├── data/                  # Dataset download/cache location (gitignored)
 ├── src/
 │   ├── dataset.py         # Speech Commands loading + preprocessing
+|   ├── dataExtract.py     # Runs the process of downloading the data set.
 │   ├── model.py           # CNN architecture
 │   ├── train.py           # Baseline training loop
 │   ├── prune.py           # Pruning experiments (unstructured + structured)
