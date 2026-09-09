@@ -1,0 +1,58 @@
+[
+  {
+    "variant": "baseline_best",
+    "format": "state_dict",
+    "checkpoint": "results\\checkpoints\\baseline_best.pt",
+    "size_bytes": 982984,
+    "params_total": 242508,
+    "params_nonzero": 242508,
+    "macs": 186222336,
+    "latency_mean_ms": 16.710796356201172,
+    "latency_std_ms": 3.39332914352417,
+    "accuracy": 0.9187806873977087,
+    "stored_val_loss": 0.2847276280960896,
+    "stored_val_acc": 0.9196488858879136
+  },
+  {
+    "variant": "pruned_structured_30-30-30-30",
+    "format": "full_model",
+    "checkpoint": "results\\checkpoints\\pruned_structured_30-30-30-30.pt",
+    "size_bytes": 104040,
+    "params_total": 22077,
+    "params_nonzero": 22077,
+    "macs": 17019456,
+    "latency_mean_ms": 4.672222137451172,
+    "latency_std_ms": 1.2651209831237793,
+    "accuracy": 0.7919394435351882,
+    "stored_val_loss": null,
+    "stored_val_acc": null
+  },
+  {
+    "variant": "pruned_structured_70-70-70-70",
+    "format": "full_model",
+    "checkpoint": "results\\checkpoints\\pruned_structured_70-70-70-70.pt",
+    "size_bytes": 498088,
+    "params_total": 120291,
+    "params_nonzero": 120291,
+    "macs": 91472400,
+    "latency_mean_ms": 14.278266906738281,
+    "latency_std_ms": 3.5977914333343506,
+    "accuracy": 0.9281914893617021,
+    "stored_val_loss": null,
+    "stored_val_acc": null
+  },
+  {
+    "variant": "pruned_unstructured_50",
+    "format": "state_dict",
+    "checkpoint": "results\\checkpoints\\pruned_unstructured_50.pt",
+    "size_bytes": 983610,
+    "params_total": 242508,
+    "params_nonzero": 121788,
+    "macs": 186222336,
+    "latency_mean_ms": 15.48377799987793,
+    "latency_std_ms": 2.2663981914520264,
+    "accuracy": 0.9398527004909983,
+    "stored_val_loss": 0.2176646507795185,
+    "stored_val_acc": 0.9412559081701553
+  }
+]

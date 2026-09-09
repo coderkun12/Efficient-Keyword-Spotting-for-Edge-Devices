@@ -82,7 +82,8 @@ def main():
     args = parse_args()
     torch.manual_seed(args.seed)
 
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    # device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    device = torch.device("cpu")
     use_amp = (device.type == "cuda") and (not args.no_amp)
     print(f"Using device: {device} | AMP: {use_amp}")
 
