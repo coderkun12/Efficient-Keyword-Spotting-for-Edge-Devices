@@ -1,0 +1,9 @@
+# Dependencies for the profiling / analysis scripts in this folder.
+#   pip install -r Profiling/requirements-profiling.txt
+#
+# torch: install the build that matches your machine first if you want CUDA --
+# see https://pytorch.org/get-started/locally/ . The CPU wheel is fine for
+# profiling: MACs, params and arithmetic intensity are machine-independent.
+torch
+torchinfo
+matplotlib
