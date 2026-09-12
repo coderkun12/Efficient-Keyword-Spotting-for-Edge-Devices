@@ -1,0 +1,23 @@
+{
+  "variant": "quantized_ptq_fbgemm__from_baseline_best",
+  "source_checkpoint": "results\\checkpoints\\baseline_best.pt",
+  "mode": "ptq",
+  "backend": "fbgemm",
+  "test_loss": 0.24687044854152418,
+  "test_acc": 0.9161211129296236,
+  "args": {
+    "checkpoint": "results/checkpoints/baseline_best.pt",
+    "mode": "ptq",
+    "backend": "fbgemm",
+    "calibration_batches": 20,
+    "qat_epochs": 5,
+    "qat_lr": 0.0001,
+    "data_root": "data",
+    "batch_size": 128,
+    "num_workers": 4,
+    "input_shape": "1,1,40,101",
+    "results_dir": "results",
+    "variant": null,
+    "seed": 42
+  }
+}
