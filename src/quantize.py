@@ -89,11 +89,7 @@ class QuantizableKeywordSpottingCNN(nn.Module):
             inplace=True,
         )
 
-
-# ---------------------------------------------------------------------------
-# Shared train/eval loop for QAT fine-tuning (see the note in prune.py about
-# why this is duplicated rather than imported).
-# ---------------------------------------------------------------------------
+# Shared train/eval loop for QAT fine-tuning.
 
 def run_epoch(model, loader, criterion, optimizer, train: bool):
     model.train(mode=train)
@@ -127,9 +123,7 @@ def calibrate(model, loader, num_batches: int):
             model(inputs)
 
 
-# ---------------------------------------------------------------------------
 # PTQ / QAT pipelines
-# ---------------------------------------------------------------------------
 
 def run_ptq(base_model, train_loader, backend: str, calibration_batches: int):
     wrapped = QuantizableKeywordSpottingCNN(base_model)
@@ -168,10 +162,7 @@ def run_qat(base_model, train_loader, val_loader, backend: str, epochs: int, lr:
     torch.quantization.convert(wrapped, inplace=True)
     return wrapped
 
-
-# ---------------------------------------------------------------------------
 # Main
-# ---------------------------------------------------------------------------
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Quantize the keyword-spotting CNN (PTQ or QAT)")
@@ -199,11 +190,9 @@ def main():
     args = parse_args()
     torch.manual_seed(args.seed)
     torch.backends.quantized.engine = args.backend
-
     results_dir = Path(args.results_dir)
     checkpoints_dir = results_dir / "checkpoints"
     checkpoints_dir.mkdir(parents=True, exist_ok=True)
-
     source_path = Path(args.checkpoint)
     print(f"Loading {source_path} ...")
     base_model, meta = load_variant(source_path)
@@ -213,43 +202,33 @@ def main():
             "quantize a float model, not another quantized one."
         )
     print(f"  loaded ({meta['format']}), params={total_parameters(base_model):,}")
-
     print("Loading data...")
     train_loader, val_loader, test_loader = get_dataloaders(
         root=args.data_root, batch_size=args.batch_size, num_workers=args.num_workers,
     )
-
     # Default variant name always encodes the source checkpoint's stem, so
     # quantizing baseline vs. a pruned model never collides on the same
     # output filename even if you forget --variant. E.g. quantizing
     # "pruned_structured_70-70-70-70.pt" with --mode qat defaults to
     # "quantized_qat_fbgemm__from_pruned_structured_70-70-70-70".
     default_variant = f"quantized_{args.mode}_{args.backend}__from_{source_path.stem}"
-
     if args.mode == "ptq":
         variant = args.variant or default_variant
         quantized = run_ptq(base_model, train_loader, args.backend, args.calibration_batches)
     else:
         variant = args.variant or default_variant
         quantized = run_qat(base_model, train_loader, val_loader, args.backend, args.qat_epochs, args.qat_lr)
-
     print("Evaluating final INT8 model on the test set...")
     test_loss, test_acc = evaluate_accuracy(quantized, test_loader)
     print(f"  test_loss={test_loss:.4f} test_acc={test_acc:.4f}")
-
     input_shape = tuple(int(x) for x in args.input_shape.split(","))
     example_input = torch.randn(*input_shape)
     traced = torch.jit.trace(quantized, example_input)
-
     out_path = checkpoints_dir / f"{variant}.pt"
     torch.jit.save(traced, str(out_path))
-
-    # Torchscript files can't carry an arbitrary metadata dict the way
-    # state_dict checkpoints can (see the CHECKPOINT CONTRACT in
-    # benchmark.py), so provenance -- which exact checkpoint was quantized,
-    # with what settings, and what it scored -- gets written to a small
-    # sidecar JSON next to it instead. Otherwise this information is only
-    # ever visible in stdout at the moment you run this script, and is lost
+    # Torchscript files can't carry an arbitrary metadata dict the way state_dict checkpoints can (see the CHECKPOINT CONTRACT in
+    # benchmark.py), so provenance -- which exact checkpoint was quantized, with what settings, and what it scored -- gets written to a small
+    # sidecar JSON next to it instead. Otherwise this information is only ever visible in stdout at the moment you run this script, and is lost
     # the second your terminal scrollback clears.
     sidecar = {
         "variant": variant,
@@ -263,7 +242,6 @@ def main():
     sidecar_path = checkpoints_dir / f"{variant}.meta.json"
     with open(sidecar_path, "w") as f:
         json.dump(sidecar, f, indent=2)
-
     print(f"\nSaved: {out_path} ({format_size(out_path.stat().st_size)})")
     print(f"Provenance sidecar: {sidecar_path}")
     print("Run benchmark.py to compare size/latency/accuracy against other variants: "
