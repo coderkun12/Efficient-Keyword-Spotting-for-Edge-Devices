@@ -51,12 +51,15 @@
 // zero, which this module generates rather than requiring the filler to pad
 // the buffer.
 //
-// NOTE ON MAPPING: the storage is modelled as register arrays with async reads,
-// which is right for simulation and for a small FPGA mapping. For SAED14nm the
-// three row banks become SRAM macros with SYNCHRONOUS reads, which adds one
-// cycle to the load path. The window shift absorbs that without changing the
-// external timing -- prime one cycle earlier. That swap is an M3 synthesis
-// task, not a functional change.
+// MAPPING: the storage is nine flat arrays with SYNCHRONOUS reads -- one per
+// (channel tap, row), with the bank folded into the address MSB. That shape
+// maps directly onto FPGA block RAM and onto compiled SRAM macros, and the
+// reasoning behind it is at the declaration below.
+//
+// The synchronous read costs one cycle on the load path, which the window
+// shift absorbs by priming for three cycles instead of two. External timing
+// is unchanged: win_vld, win and win_x still arrive together, which is why
+// layer_top needed no modification when this changed.
 // ---------------------------------------------------------------------------
 
 `default_nettype none
@@ -91,14 +94,9 @@ module band_sram #(
 
     localparam int AW = $clog2(DEPTH);
 
-    // ---- Storage: 2 banks x ROWS row-banks x DEPTH bytes ------------------
-    reg [7:0] mem [0:1][0:ROWS-1][0:DEPTH-1];
-
-    integer bi, ri, di;
-    always @(posedge clk) begin
-        if (wr_en)
-            mem[wr_bank][wr_row][wr_addr] <= wr_data;
-    end
+    // ---- Storage lives below, after col_addr ------------------------------
+    // The arrays are declared next to the read that uses them, because the
+    // read address has to exist first. See "Storage + synchronous read".
 
     // ---- Sweep counter ----------------------------------------------------
     // xc is the column being LOADED into the newest tap this cycle. The window
@@ -114,40 +112,117 @@ module band_sram #(
     genvar gc;
     generate
         for (gc = 0; gc < WIN_CH; gc = gc + 1) begin : g_addr
-            assign col_addr[gc] = rd_base + (gc * ch_stride) + xc[AW-1:0];
+            // The sum is 32 bits wide because gc*ch_stride promotes to
+            // integer width, and it is narrowed to AW deliberately.
+            //
+            // The bound that makes that safe: the window reads channels
+            // ch_base .. ch_base+2, so the highest address any tap forms is
+            // (ch_base+3)*width - 1, and ch_base+3 never exceeds the channel
+            // count -- so it stays below channels*width, which is what DEPTH
+            // is sized to. An EXPLICIT cast says so. Left implicit the tool
+            // warns, and one more routine truncation warning is exactly where
+            // a real overflow would hide later.
+            assign col_addr[gc] = AW'(rd_base + (gc * ch_stride) + xc[AW-1:0]);
         end
     endgenerate
 
     // Newest tap column, zero outside the row.
     wire in_range = (xc < {1'b0, row_width});
 
+    // ---- Storage + synchronous read ---------------------------------------
+    //
+    // WHY NINE FLAT ARRAYS AND NOT ONE MULTI-DIMENSIONAL ONE
+    // Each channel tap reads a different address every cycle -- rd_base +
+    // c*ch_stride + xc for c = 0..WIN_CH-1. Those are ch_stride apart, so
+    // they cannot be fetched as one wide word, and no FPGA block RAM has
+    // three read ports. The array must therefore be replicated per tap.
+    //
+    // The shape of the replication decides whether it works at all. Writing
+    // it as one array indexed [tap][bank][row][addr] is the obvious form and
+    // is useless: RAM inference matches a FLAT array under a SINGLE address,
+    // and a 4-D array with three variable indices does not match. Quartus
+    // silently builds it out of logic instead -- 465 Kb of it, three times
+    // every register on this device -- and synthesis grinds for tens of
+    // minutes before failing to fit.
+    //
+    // So each (tap, row) pair gets its own flat array, with the bank folded
+    // into the address MSB. Nine arrays, each one write port with an enable
+    // and one read port with a registered output: textbook simple dual port,
+    // which is exactly what M9K implements and what an SRAM macro compiles
+    // to. Addressing by concatenation rather than rd_bank*DEPTH keeps an
+    // adder out of the address path, at the cost of rounding each array up
+    // to a power of two.
+    //
+    // Cost: 9 x 2^(AW+1) bytes = 590 Kb, about 9% of the EP4CGX150's M9K.
+    reg [7:0] mem_q [0:WIN_CH-1][0:ROWS-1];
+
+    genvar gm, gr;
+    generate
+        for (gm = 0; gm < WIN_CH; gm = gm + 1) begin : g_tap
+            for (gr = 0; gr < ROWS; gr = gr + 1) begin : g_row
+                reg [7:0] m [0:(2<<AW)-1];
+
+                // Deliberately no reset on the output register: an async
+                // clear on a block RAM's output stops the tool packing it
+                // into the memory. The priming sequence below guarantees
+                // real data is present before anything reads it.
+                always @(posedge clk) begin
+                    if (wr_en && (wr_row == gr[$clog2(ROWS)-1:0]))
+                        m[{wr_bank, wr_addr}] <= wr_data;
+                    mem_q[gm][gr] <= m[{rd_bank, col_addr[gm]}];
+                end
+            end
+        end
+    endgenerate
+
+    // in_range travels with the data it qualifies, so it needs the same
+    // one-cycle delay. It is a scalar in logic, not part of the RAM, so a
+    // reset here costs nothing and keeps it out of X.
+    reg in_range_q;
+
     integer c, r;
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
-            win     <= {(WIN_CH*ROWS*3*8){1'b0}};
-            win_vld <= 1'b0;
-            win_x   <= 16'd0;
-            xc      <= 17'd0;
-            prime   <= 2'd0;
+            win        <= {(WIN_CH*ROWS*3*8){1'b0}};
+            win_vld    <= 1'b0;
+            win_x      <= 16'd0;
+            xc         <= 17'd0;
+            prime      <= 2'd0;
+            in_range_q <= 1'b0;
         end else if (sweep_start) begin
             // Clear the window so x=0's left tap is padding, then start
             // loading at column 0.
-            win     <= {(WIN_CH*ROWS*3*8){1'b0}};
-            win_vld <= 1'b0;
-            win_x   <= 16'd0;
-            xc      <= 17'd0;
-            prime   <= 2'd2;
+            //
+            // PRIME IS 3, NOT 2. Two columns must be in the window before
+            // x=0 is valid, and with a registered read each column now takes
+            // an extra cycle to arrive. The third count covers that.
+            win        <= {(WIN_CH*ROWS*3*8){1'b0}};
+            win_vld    <= 1'b0;
+            win_x      <= 16'd0;
+            xc         <= 17'd0;
+            prime      <= 2'd3;
+            in_range_q <= 1'b0;
         end else begin
+            in_range_q <= in_range;
             // Shift the window left by one tap and load the new column.
-            for (c = 0; c < WIN_CH; c = c + 1) begin
-                for (r = 0; r < ROWS; r = r + 1) begin
-                    // tap0 <= tap1, tap1 <= tap2, tap2 <= new column
-                    win[((c*ROWS + r)*3 + 0)*8 +: 8] <=
-                        win[((c*ROWS + r)*3 + 1)*8 +: 8];
-                    win[((c*ROWS + r)*3 + 1)*8 +: 8] <=
-                        win[((c*ROWS + r)*3 + 2)*8 +: 8];
-                    win[((c*ROWS + r)*3 + 2)*8 +: 8] <=
-                        in_range ? mem[rd_bank][r][col_addr[c]] : 8'h00;
+            //
+            // Held still on the FIRST priming cycle: the read register has
+            // not produced its first column yet, so it still holds whatever
+            // the previous sweep left behind. Shifting that in would push
+            // stale bytes toward tap0 -- which is precisely the position x=0
+            // reads as left padding, so the corruption would land on the
+            // first output column and nowhere else.
+            if (prime != 2'd3) begin
+                for (c = 0; c < WIN_CH; c = c + 1) begin
+                    for (r = 0; r < ROWS; r = r + 1) begin
+                        // tap0 <= tap1, tap1 <= tap2, tap2 <= new column
+                        win[((c*ROWS + r)*3 + 0)*8 +: 8] <=
+                            win[((c*ROWS + r)*3 + 1)*8 +: 8];
+                        win[((c*ROWS + r)*3 + 1)*8 +: 8] <=
+                            win[((c*ROWS + r)*3 + 2)*8 +: 8];
+                        win[((c*ROWS + r)*3 + 2)*8 +: 8] <=
+                            in_range_q ? mem_q[c][r] : 8'h00;
+                    end
                 end
             end
 

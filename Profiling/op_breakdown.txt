@@ -1,0 +1,57 @@
+======================================================================================
+OPERATOR RUNTIME BREAKDOWN -- Keyword Spotting CNN (inference, batch 1)
+======================================================================================
+Generated       : 2026-09-15 23:47:33
+Machine         : DESKTOP-K8PQA4Q
+Platform        : Windows-10-10.0.26200-SP0
+Processor       : Intel64 Family 6 Model 142 Stepping 12, GenuineIntel
+Python / torch  : 3.11.9 / 2.11.0+cpu
+torch threads   : 1
+Input shape     : (1, 1, 40, 101)
+Profiled iters  : 150 (after 4 s warmup)
+Total self CPU  : 1,577,450 us
+
+--- Grouped shares (each op counted once; groups sum to 100%) ------------------------
+         group |    self CPU us |    share
+--------------------------------------------
+   convolution |        859,627 |   54.49%
+      max-pool |        546,954 |   34.67%
+     batchnorm |         87,273 |    5.53%
+          relu |         39,778 |    2.52%
+        linear |          4,095 |    0.26%
+         other |         39,724 |    2.52%
+
+--- Top 15 individual operators ----------------------------------------------------
+operator                                       |   self CPU us |   share
+------------------------------------------------------------------------
+aten::mkldnn_convolution                       |       816,329 |  51.75%
+aten::max_pool2d_with_indices                  |       541,990 |  34.36%
+aten::native_batch_norm                        |        74,735 |   4.74%
+aten::clamp_min_                               |        36,983 |   2.34%
+aten::conv2d                                   |        15,695 |   0.99%
+aten::_slow_conv2d_forward                     |        15,269 |   0.97%
+aten::_batch_norm_impl_index                   |        10,252 |   0.65%
+aten::empty                                    |        10,214 |   0.65%
+aten::copy_                                    |         8,489 |   0.54%
+aten::_convolution                             |         7,030 |   0.45%
+aten::convolution                              |         4,816 |   0.31%
+aten::max_pool2d                               |         4,311 |   0.27%
+aten::addmm                                    |         3,243 |   0.21%
+aten::sum                                      |         3,049 |   0.19%
+aten::relu_                                    |         2,794 |   0.18%
+
+======================================================================================
+AMDAHL ACCELERATED FRACTIONS -- the numbers the roofline consumes
+======================================================================================
+  f(convolution only)              = 0.5449   (54.49%)
+  f(conv + pool + BN + ReLU)       = 0.9722   (97.22%)
+
+  Ceiling on system speedup (infinitely fast accelerator, S = 1/(1-f)):
+    convolution only        : 2.20x
+    conv + pool + BN + ReLU : 36.00x
+
+  Feed these to the roofline as:
+    CONV_FRACTION    = 0.54
+    FEATURE_FRACTION = 0.97
+  in Profiling/roofline_chiplet.py, and --accel-fraction for roofline.py.
+======================================================================================

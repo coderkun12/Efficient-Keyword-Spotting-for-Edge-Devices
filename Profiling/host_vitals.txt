@@ -1,0 +1,77 @@
+==========================================================================================
+HOST VITALS -- Efficient Keyword Spotting for Edge Devices
+Inputs for the roofline's CPU peak, memory bandwidth and measured point
+==========================================================================================
+Generated            : 2026-09-15 23:48:18
+Machine (hostname)   : DESKTOP-K8PQA4Q
+Platform             : Windows-10-10.0.26200-SP0
+Processor (platform) : Intel64 Family 6 Model 142 Stepping 12, GenuineIntel
+Processor (brand)    : Intel64 Family 6 Model 142 Stepping 12, GenuineIntel
+Vector ISA flags     : (install py-cpuinfo for ISA flags: pip install py-cpuinfo)
+Logical CPUs (os)    : 8
+Python               : 3.11.9
+torch                : 2.11.0+cpu
+torch default threads: 4
+torchaudio           : NOT INSTALLED
+dataset config       : src/dataset.py not importable (ModuleNotFoundError); using defaults 40 / 12
+Model input shape    : (1, 1, 40, 101)  (B, C, n_mels, time)
+Model params         : 242,508
+Model MACs/inference : 186,770,892  (373,541,784 FLOP)
+
+==========================================================================================
+SECTION 1 -- HARDWARE PROBE (raw tool output)
+Needed for: CPU peak FLOP/s (cores x FLOP-per-cycle x clock) and
+            peak memory bandwidth (module speed x channels x 8 bytes).
+==========================================================================================
+
+--- CPU (Win32_Processor) -----------------------------------------------------
+Name                      : Intel(R) Core(TM) i5-10210U CPU @ 1.60GHz
+NumberOfCores             : 4
+NumberOfLogicalProcessors : 8
+MaxClockSpeed             : 2112
+CurrentClockSpeed         : 1609
+L2CacheSize               : 1024
+L3CacheSize               : 6144
+
+--- Memory modules (Win32_PhysicalMemory) -------------------------------------
+BankLabel            : BANK 2
+DeviceLocator        : ChannelB-DIMM0
+Capacity             : 17179869184
+Speed                : 2667
+ConfiguredClockSpeed : 2667
+SMBIOSMemoryType     : 26
+
+--- Total physical memory -----------------------------------------------------
+16969158656
+
+==========================================================================================
+SECTION 2 -- MEASURED SUSTAINED THROUGHPUT (batch 1)
+Warmup 5 s of continuous inference before timing, so boost clocks
+have settled. 800 timed iterations per thread setting.
+==========================================================================================
+
+ threads |   best ms |  median ms |    p90 ms | GFLOP/s @best |  spread
+------------------------------------------------------------------------------
+       1 |      7.79 |      10.52 |     15.30 |          48.0 |    2.0x
+       2 |      5.87 |      10.68 |     15.04 |          63.6 |    2.6x
+       4 |      4.27 |       7.72 |     11.16 |          87.4 |    2.6x
+       8 |      4.74 |       7.98 |     12.27 |          78.8 |    2.6x
+
+Reading the spread column: 1.0-1.3x means a quiet, well-cooled machine and
+the median is trustworthy. Above ~2x means the part is throttling or the
+machine is loaded, and only the best-case column is reproducible.
+
+NOTE: the single-threaded row is the one that matters. Keyword spotting is
+an always-on streaming workload classifying one 1 s window at a time, and
+src/benchmark.py measures latency the same way.
+
+==========================================================================================
+SECTION 3 -- WHAT WE STILL NEED FROM THE SPEC SHEET
+==========================================================================================
+From Section 1, look up and confirm by hand:
+  1. All-core sustained boost clock (GHz) -- not just the single-core max.
+  2. FMA units per core and vector width, to get FLOP per cycle per core.
+     AVX2 + 1 FMA  = 16 FLOP/cycle/core;  AVX2 + 2 FMA = 32 FLOP/cycle/core.
+  3. Number of populated memory channels (count the modules in Section 1).
+     Peak BW = module speed (MT/s) x channels x 8 bytes/transfer.
+==========================================================================================

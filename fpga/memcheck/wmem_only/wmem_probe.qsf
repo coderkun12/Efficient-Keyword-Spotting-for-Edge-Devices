@@ -1,0 +1,33 @@
+# ---------------------------------------------------------------------------
+# Four structural variants of the weight memory, one synthesis run.
+#
+# Run ONLY "Analysis & Synthesis". It should take well under a minute -- and
+# if it does NOT, that is itself the answer: 4 x 16 x 9216 bits built from
+# registers is 590 Kb of flops.
+#
+# HOW TO READ THE RESULT
+#   Total memory bits = 589,824   all four variants inferred (none is the bug)
+#                     = 442,368   three of four inferred; the missing one is
+#                                 named in the altsyncram list
+#                     = 0         none inferred; the problem is none of these
+#                                 four differences
+#
+# The altsyncram instance names carry the variant: g_a, g_b, mem_c, g_d.
+# Whichever prefix is ABSENT from the inferred list is the shape that blocks
+# RAM inference, and that is the thing to change in layer_top.
+# ---------------------------------------------------------------------------
+
+set_global_assignment -name FAMILY "Cyclone IV GX"
+set_global_assignment -name DEVICE EP4CGX150DF31C7
+set_global_assignment -name TOP_LEVEL_ENTITY wmem_probe
+
+set_global_assignment -name SYSTEMVERILOG_FILE wmem_probe.sv
+
+set_global_assignment -name AUTO_RAM_RECOGNITION ON
+set_global_assignment -name NUM_PARALLEL_PROCESSORS 4
+
+set_global_assignment -name LAST_QUARTUS_VERSION "25.1std.0 Lite Edition"
+set_global_assignment -name PARTITION_NETLIST_TYPE SOURCE -section_id Top
+set_global_assignment -name PARTITION_FITTER_PRESERVATION_LEVEL PLACEMENT_AND_ROUTING -section_id Top
+set_global_assignment -name PARTITION_COLOR 16764057 -section_id Top
+set_instance_assignment -name PARTITION_HIERARCHY root_partition -to | -section_id Top

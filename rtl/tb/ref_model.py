@@ -151,3 +151,50 @@ def fused_writeback(acc_vectors, biases, mults, shifts, height, width,
                 for m in range(m_count)
             ])
     return out
+
+
+# ---------------------------------------------------------------------------
+# Convolution reference
+#
+# Moved here from test_layer_top.py so the cocotb suite and the FPGA vector
+# generator compute golden data with the SAME code. Two copies of a model
+# that are supposed to agree will eventually not, and the failure surfaces as
+# a hardware bug that isn't one.
+# ---------------------------------------------------------------------------
+
+ROWS = 3
+
+def conv_row(band, weights, channels, width, m_count):
+    """One output row of a 3x3 same-padded convolution.
+
+    band[r][c][x] holds the three input rows already selected by the caller,
+    with rows outside the map passed in as zeros.
+    """
+    out = []
+    for x in range(width):
+        acc = []
+        for m in range(m_count):
+            total = 0
+            for c in range(channels):
+                for r in range(ROWS):
+                    for s in range(3):
+                        col = x - 1 + s
+                        if 0 <= col < width:
+                            total += weights[m][c * 9 + r * 3 + s] * band[r][c][col]
+            acc.append(total)
+        out.append(acc)
+    return out
+
+
+def conv_layer(fmap, weights, channels, height, width, m_count):
+    """Full layer accumulator stream, row-major, before requantisation."""
+    zero_row = [[0] * width for _ in range(channels)]
+    accs = []
+    for y in range(height):
+        band = []
+        for dy in (-1, 0, 1):
+            yy = y + dy
+            band.append([fmap[c][yy][:] for c in range(channels)]
+                        if 0 <= yy < height else [r[:] for r in zero_row])
+        accs.extend(conv_row(band, weights, channels, width, m_count))
+    return accs

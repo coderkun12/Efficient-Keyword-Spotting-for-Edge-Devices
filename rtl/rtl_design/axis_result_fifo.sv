@@ -62,13 +62,19 @@ module axis_result_fifo #(
     wire do_write = wr_en && !full;
     wire do_read  = m_axis_tvalid && m_axis_tready;
 
-    integer i;
+    // Loop counter declared in the loop, not at module scope. As a
+    // module-scope `integer i` it is assigned only here, in the reset branch,
+    // and the else branch below never touches it -- so it stays live on every
+    // other path, which is state, and synthesis infers a latch for a variable
+    // meant to vanish at elaboration. Same defect the tool found on
+    // writeback's cfg storage; caught here by lint L9 before synthesis ever
+    // saw this module.
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
             wr_ptr   <= {(PTR_W+1){1'b0}};
             rd_ptr   <= {(PTR_W+1){1'b0}};
             overflow <= 1'b0;
-            for (i = 0; i < DEPTH; i = i + 1)
+            for (int i = 0; i < DEPTH; i = i + 1)
                 mem[i] <= {WIDTH{1'b0}};
         end else begin
             if (do_write) begin

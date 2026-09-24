@@ -1,0 +1,18 @@
+Analysis & Synthesis Status : Successful - Thu Sep 24 08:40:29 2026
+Quartus Prime Version : 25.1std.0 Build 1129 10/21/2025 SC Lite Edition
+Revision Name : de2i150_layer_top
+Top-level Entity Name : de2i150_layer_top
+Family : Cyclone IV GX
+Total logic elements : 61,039
+    Total combinational functions : 33,402
+    Dedicated logic registers : 35,272
+Total registers : 35272
+Total pins : 32
+Total virtual pins : 0
+Total memory bits : 968,192
+Embedded Multiplier 9-bit elements : 320
+Total GXB Receiver Channel PCS : 0
+Total GXB Receiver Channel PMA : 0
+Total GXB Transmitter Channel PCS : 0
+Total GXB Transmitter Channel PMA : 0
+Total PLLs : 0

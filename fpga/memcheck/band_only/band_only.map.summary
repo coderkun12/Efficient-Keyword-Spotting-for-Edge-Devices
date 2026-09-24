@@ -1,0 +1,18 @@
+Analysis & Synthesis Status : Successful - Wed Sep 23 09:26:12 2026
+Quartus Prime Version : 25.1std.0 Build 1129 10/21/2025 SC Lite Edition
+Revision Name : band_only
+Top-level Entity Name : band_sram
+Family : Cyclone IV GX
+Total logic elements : 368
+    Total combinational functions : 368
+    Dedicated logic registers : 253
+Total registers : 253
+Total pins : 301
+Total virtual pins : 0
+Total memory bits : 589,824
+Embedded Multiplier 9-bit elements : 0
+Total GXB Receiver Channel PCS : 0
+Total GXB Receiver Channel PMA : 0
+Total GXB Transmitter Channel PCS : 0
+Total GXB Transmitter Channel PMA : 0
+Total PLLs : 0

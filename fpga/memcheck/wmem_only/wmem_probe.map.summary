@@ -1,0 +1,18 @@
+Analysis & Synthesis Status : Successful - Wed Sep 23 10:51:40 2026
+Quartus Prime Version : 25.1std.0 Build 1129 10/21/2025 SC Lite Edition
+Revision Name : wmem_probe
+Top-level Entity Name : wmem_probe
+Family : Cyclone IV GX
+Total logic elements : 362,618
+    Total combinational functions : 215,162
+    Dedicated logic registers : 147,712
+Total registers : 147712
+Total pins : 604
+Total virtual pins : 0
+Total memory bits : 271,360
+Embedded Multiplier 9-bit elements : 0
+Total GXB Receiver Channel PCS : 0
+Total GXB Receiver Channel PMA : 0
+Total GXB Transmitter Channel PCS : 0
+Total GXB Transmitter Channel PMA : 0
+Total PLLs : 0

@@ -1,0 +1,18 @@
+# ---------------------------------------------------------------------------
+# Quartus project file for the DE2i-150 mac_array self-test.
+#
+# This exists so the project can be opened with File > Open Project, WITHOUT
+# running the New Project Wizard. The wizard would write its own .qsf over
+# de2i150_mac_top.qsf and silently discard the device choice, the file list,
+# the .mif registrations, the tri-state setting for unused pins and the DSP
+# recognition flag.
+#
+# If Quartus complains the version is older than itself, let it upgrade the
+# project -- that is a harmless metadata bump.
+# ---------------------------------------------------------------------------
+
+QUARTUS_VERSION = "20.1"
+
+# Revisions
+
+PROJECT_REVISION = "de2i150_mac_top"

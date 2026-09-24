@@ -1,0 +1,16 @@
+# Round two: is the COMPUTED read address what blocks inference, and does
+# wrapping each lane in a module fix it? 4 lanes per variant keeps this fast
+# whichever way it goes. Analysis & Synthesis only.
+#
+# Expected memory bits if ALL FOUR infer: 4 lanes x (2048+2048+1152+2048) x 8
+#                                       = 232,448
+# Each variant contributes: E 65,536  F 65,536  G 36,864  H 65,536
+
+set_global_assignment -name FAMILY "Cyclone IV GX"
+set_global_assignment -name DEVICE EP4CGX150DF31C7
+set_global_assignment -name TOP_LEVEL_ENTITY wmem_probe2
+
+set_global_assignment -name SYSTEMVERILOG_FILE wmem_probe2.sv
+
+set_global_assignment -name AUTO_RAM_RECOGNITION ON
+set_global_assignment -name NUM_PARALLEL_PROCESSORS 4

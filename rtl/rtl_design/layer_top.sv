@@ -126,22 +126,52 @@ module layer_top #(
     // One M*8-bit word per (tile, tap) turns it into a single 1,152:1 read at
     // one address. The host still writes bytes; the lane is decoded here.
     // -----------------------------------------------------------------------
-    localparam int WWORDS = MAX_KTILES * K;
-    localparam int WW_AW  = $clog2(WWORDS);
+    localparam int WWORDS = MAX_KTILES * K;   // 1152: words actually used
+    localparam int WW_AW  = $clog2(WWORDS);   // 11
+    // The arrays are DECLARED a power of two deep, not WWORDS deep.
+    //
+    // Quartus will not infer block RAM from an array whose depth is not a
+    // power of two WHEN THAT ARRAY IS INSIDE A GENERATE BLOCK. Either
+    // condition alone is fine -- a 1152-deep array at module scope infers,
+    // and a 2048-deep array inside a generate infers -- but together they do
+    // not, and the tool says nothing at all about it. No "uninferred"
+    // message, and an explicit (* ramstyle = "M9K" *) is ignored rather than
+    // rejected. The only visible symptom is 147 Kb quietly becoming
+    // registers, which put this design 220% over the device.
+    //
+    // That was established by synthesising the four variants in
+    // fpga/memcheck/wmem_only/wmem_probe.sv, after two plausible-looking
+    // fixes changed nothing.
+    //
+    // Cost of rounding 1152 up to 2048: 16 lanes x 896 unused words x 8 bits
+    // = 114,688 bits, about 1.7% of this device's M9K. band_sram's arrays are
+    // already rounded this way, which is why they infer.
+    localparam int WDEPTH = 1 << WW_AW;       // 2048: words declared
 
-    reg [M*8-1:0] wmem [0:WWORDS-1];
+    // Host byte address is kt*K*M + m*K + k. With K and M both powers of two
+    // that is not arithmetic at all -- it is three adjacent BIT FIELDS:
+    //
+    //     wm_wr_addr = [   kt   | lane |  k  ]
+    //                      7b      4b    4b        for K = M = 16, 72 k-tiles
+    //
+    // WHY THIS IS SLICED AND NOT DIVIDED
+    // Written with / and % the same value is a COMPUTED address, and Quartus
+    // would not infer RAM behind it. There was no diagnostic: all 147 Kb
+    // silently became registers, no "uninferred" message, and the only
+    // visible symptom was a 15-minute synthesis and a design 220% over the
+    // device. Slicing states the identical thing in the form the tool
+    // recognises -- the same concatenated-address shape that band_sram's
+    // nine arrays infer from cleanly.
+    localparam int WM_KW  = $clog2(K);      // 4: width of the k field
+    localparam int WM_KMW = $clog2(K*M);    // 8: k and lane together
 
-    // Host byte address is kt*K*M + m*K + k; split it into word and lane.
-    wire [31:0] wm_kt   = wm_wr_addr / (K*M);
-    wire [31:0] wm_rem  = wm_wr_addr % (K*M);
-    wire [31:0] wm_lane = wm_rem / K;
-    wire [31:0] wm_k    = wm_rem % K;
-    wire [WW_AW-1:0] wm_word = WW_AW'(wm_kt * K + wm_k);
+    wire [WMEM_AW-WM_KMW-1:0] wm_kt   = wm_wr_addr[WMEM_AW-1 -: (WMEM_AW-WM_KMW)];
+    wire [WM_KMW-WM_KW-1:0]   wm_lane = wm_wr_addr[WM_KMW-1  -: (WM_KMW-WM_KW)];
+    wire [WM_KW-1:0]          wm_k    = wm_wr_addr[WM_KW-1   -: WM_KW];
+    wire [WW_AW-1:0]          wm_word = {wm_kt, wm_k};
 
-    always @(posedge clk) begin
-        if (wm_wr_en)
-            wmem[wm_word][wm_lane[$clog2(M)-1:0]*8 +: 8] <= wm_wr_data;
-    end
+    // The storage itself is declared further down, beside the read that uses
+    // it, because the read address depends on wkt and wcnt.
 
     // -----------------------------------------------------------------------
     // Sequencer
@@ -161,9 +191,42 @@ module layer_top #(
 
     // Byte offset of the COMPUTING tile's first tap within the 3-channel
     // window, and the channel group that window must cover.
-    wire [15:0] tap_base  = 16'(ckt) * 16'(K);
-    wire [15:0] ch_base   = tap_base / 16'd9;
-    wire [15:0] tap_off   = tap_base - ch_base * 16'd9;
+    // ---- k-tile -> (channel base, tap offset), REGISTERED -----------------
+    //
+    // These derive from ckt, which changes only at a k-tile boundary and then
+    // holds for the whole W-cycle sweep. Left combinational they sit on the
+    // array's critical path:
+    //
+    //     ckt -> divide by 9 -> multiply -> 216-bit variable barrel shift
+    //         -> a_vec -> PE multiply -> 28-bit accumulate
+    //
+    // all inside one cycle. Quartus measured that at 24.834 ns against a
+    // 20 ns period: -4.798 ns of setup slack and 40 MHz Fmax, on a board
+    // clocked at 50.
+    //
+    // Registering costs nothing in throughput because the values are constant
+    // across the sweep that uses them, and nothing in latency because
+    // band_sram primes for three cycles after sweep_start before the first
+    // window appears -- the one-cycle lag is absorbed entirely inside that.
+    wire [15:0] tap_base_c = 16'(ckt) * 16'(K);
+    wire [15:0] ch_base_c  = tap_base_c / 16'd9;
+    wire [15:0] tap_off_c  = tap_base_c - ch_base_c * 16'd9;
+
+    reg  [15:0] ch_base;
+    reg  [15:0] tap_off;
+    reg  [$clog2(BAND_DEPTH)-1:0] rd_base_r;
+
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            ch_base   <= 16'd0;
+            tap_off   <= 16'd0;
+            rd_base_r <= {$clog2(BAND_DEPTH){1'b0}};
+        end else begin
+            ch_base   <= ch_base_c;
+            tap_off   <= tap_off_c;
+            rd_base_r <= $clog2(BAND_DEPTH)'(ch_base_c * cfg_ch_stride);
+        end
+    end
 
     // -----------------------------------------------------------------------
     // band_sram
@@ -183,7 +246,7 @@ module layer_top #(
         .wr_data     (bnd_wr_data),
         .rd_bank     (cfg_rd_bank),
         .sweep_start (sweep_start),
-        .rd_base     ($clog2(BAND_DEPTH)'(ch_base * cfg_ch_stride)),
+        .rd_base     (rd_base_r),
         .ch_stride   ($clog2(BAND_DEPTH)'(cfg_ch_stride)),
         .row_width   (cfg_width),
         .win_vld     (win_vld),
@@ -215,7 +278,19 @@ module layer_top #(
     reg                 start_shift; // FSM request pulse
     reg                 want_shift; // request latched until it can run
     reg [7:0]           next_kt;
-    reg [$clog2(K+1)-1:0] hold;     // cycles the shadows must stay untouched
+    // Cycles the shadows must stay untouched after a commit.
+    //
+    // The commit now travels BOTH dimensions -- down one row per PIPE cycles
+    // and right one column per cycle -- so the last PE to copy shadow into
+    // active is PE(K-1, M-1), at commit + PIPE*(K-1) + (M-1). Starting the
+    // next tile's shift before then overwrites shadows the far corner of the
+    // array has not read yet.
+    //
+    // K alone was correct only while the commit was row-skewed. It is the
+    // matching half of the mac_array fix: change one without the other and
+    // the array holds neither tile.
+    localparam int HOLD_CYCLES = PIPE * (K - 1) + M;   // 31 at K=M=16, PIPE=1
+    reg [$clog2(HOLD_CYCLES+1)-1:0] hold;
 
     wire w_shift_en = shifting;
     reg  w_switch;
@@ -227,7 +302,86 @@ module layer_top #(
     // whole module before resolving names and so tolerates a forward
     // reference here; Genus's parser does not, and rejects it outright with
     // "Reference to undeclared variable". Declaration order is not optional.
-    wire [M*8-1:0] w_top = wmem[WW_AW'({8'd0, wkt} * K + (K-1-wcnt))];
+    // ---- Synchronous read ------------------------------------------------
+    // wmem is 1152 x 128 b = 147 Kb. Held in flops that is 98% of the
+    // EP4CGX150's registers, so it has to be block RAM -- and block RAM
+    // cannot do the combinational read this line used to be.
+    //
+    // Registering the DATA alone would misalign it: the array would latch
+    // cycle i's shift enable against cycle i-1's weights, shifting the whole
+    // tile in off by one. So the ENABLE is delayed with it, and the array
+    // sees the identical K-cycle sequence one cycle later. The sequence is
+    // translated in time, not reshaped, which is why nothing downstream of
+    // the array needed to change.
+    //
+    // No reset on w_top_q: an async clear on a block RAM's output register
+    // stops the tool packing it into the memory. It carries no meaning while
+    // w_shift_en_q is low.
+    // ---- Weight storage: M byte-wide memories, one per column lane -------
+    //
+    // WHY IT IS SPLIT PER LANE AND NOT ONE M*8-BIT ARRAY
+    // The host writes ONE BYTE at a time, into lane wm_lane of word wm_word.
+    // Expressed against a wide array that is
+    //
+    //     wmem[wm_word][wm_lane*8 +: 8] <= wm_wr_data;
+    //
+    // a partial write at a VARIABLE offset inside a memory word. No RAM
+    // primitive does that, and the pattern does not match the byte-enable
+    // form inference looks for, so the tool gives up and builds all 147 Kb
+    // out of logic -- the same failure mode, and the same wasted synthesis
+    // run, as band_sram's multi-dimensional array.
+    //
+    // Splitting by lane makes every write a FULL-WORD write to a byte-wide
+    // memory, selected by a plain write enable. Sixteen arrays of WWORDS x 8
+    // bits, each one write port and one read port. The read address is shared
+    // across all sixteen, because a shift cycle wants W[m][k] for every m at
+    // once -- which is exactly why the memory was organised one word per
+    // (tile, tap) in the first place.
+    //
+    // Each lane keeps its own output register and the wide word is
+    // reassembled continuously. Driving slices of one shared reg from
+    // sixteen always blocks would be multiple drivers on one variable, which
+    // is illegal even though the slices are disjoint.
+    wire [M*8-1:0]    w_top_q;
+    wire [WW_AW-1:0]  w_rd_addr = WW_AW'({8'd0, wkt} * K + (K-1-wcnt));
+
+    genvar gl;
+    generate
+        for (gl = 0; gl < M; gl = gl + 1) begin : g_wlane
+            // byte_ram, not a reg array declared here.
+            //
+            // A reg array inside a generate block would not map to block RAM
+            // -- see byte_ram.sv for the four attempts that failed and the
+            // probe that identified module scope as the difference. A
+            // generate containing module INSTANCES is not the same thing as
+            // a generate containing array DECLARATIONS.
+            byte_ram #(.DEPTH(WDEPTH), .AW(WW_AW)) u_wm (
+                .clk   (clk),
+                .we    (wm_wr_en && (wm_lane == gl)),
+                .waddr (wm_word),
+                .wdata (wm_wr_data),
+                .raddr (w_rd_addr),
+                .q     (w_top_q[gl*8 +: 8])
+            );
+        end
+    endgenerate
+
+    reg w_shift_en_q;
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) w_shift_en_q <= 1'b0;
+        else        w_shift_en_q <= w_shift_en;
+    end
+
+    // w_ready tells the compute FSM the shadows are loaded and a commit may
+    // be issued. Undelayed, it would grant that one cycle before the final
+    // weight has actually landed, committing a tile one byte short -- the
+    // same class of bug as the skewed-commit failure documented below, and
+    // just as hard to see: 15 of 16 rows would be correct.
+    reg w_ready_q;
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) w_ready_q <= 1'b0;
+        else        w_ready_q <= w_ready;
+    end
 
     // -----------------------------------------------------------------------
     // The commit is SKEWED: row k copies shadow -> active at commit_cycle + k,
@@ -249,10 +403,10 @@ module layer_top #(
             shifting   <= 1'b0;
             w_ready    <= 1'b0;
             want_shift <= 1'b0;
-            hold       <= {$clog2(K+1){1'b0}};
+            hold       <= {$clog2(HOLD_CYCLES+1){1'b0}};
         end else begin
             if (w_switch)
-                hold <= $clog2(K+1)'(K);
+                hold <= $clog2(HOLD_CYCLES+1)'(HOLD_CYCLES);
             else if (hold != 0)
                 hold <= hold - 1'b1;
 
@@ -285,8 +439,8 @@ module layer_top #(
     mac_array #(.K(K), .M(M), .ACC_W(ACC_W), .PIPE(PIPE)) u_array (
         .clk        (clk),
         .rst_n      (rst_n),
-        .w_shift_en (w_shift_en),
-        .w_top      (w_top),
+        .w_shift_en (w_shift_en_q),
+        .w_top      (w_top_q),
         .w_switch   (w_switch),
         .a_vld      (win_vld && (state == S_SWEEP)),
         .a_vec      (a_vec),
@@ -394,7 +548,7 @@ module layer_top #(
                     // The shadows are loading. Commit and launch as soon as
                     // they are ready. Only reachable for tile 0, or if a row is
                     // narrower than K cycles so the shift could not hide.
-                    if (w_ready) begin
+                    if (w_ready_q) begin
                         w_switch    <= 1'b1;
                         sweep_start <= 1'b1;
                         if ({8'd0, ckt} + 16'd1 < {8'd0, cfg_ktiles}) begin
@@ -410,7 +564,7 @@ module layer_top #(
                         if ({8'd0, ckt} + 16'd1 >= {8'd0, cfg_ktiles}) begin
                             drain_cnt <= 16'd0;
                             state     <= S_DRAIN;
-                        end else if (w_ready) begin
+                        end else if (w_ready_q) begin
                             // Next tile is already in the shadows: swap and go.
                             ckt         <= ckt + 8'd1;
                             w_switch    <= 1'b1;

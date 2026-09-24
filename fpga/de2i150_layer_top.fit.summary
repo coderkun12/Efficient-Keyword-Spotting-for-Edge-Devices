@@ -1,0 +1,20 @@
+Fitter Status : Successful - Thu Sep 24 08:55:02 2026
+Quartus Prime Version : 25.1std.0 Build 1129 10/21/2025 SC Lite Edition
+Revision Name : de2i150_layer_top
+Top-level Entity Name : de2i150_layer_top
+Family : Cyclone IV GX
+Device : EP4CGX150DF31C7
+Timing Models : Final
+Total logic elements : 49,961 / 149,760 ( 33 % )
+    Total combinational functions : 33,418 / 149,760 ( 22 % )
+    Dedicated logic registers : 32,832 / 149,760 ( 22 % )
+Total registers : 32832
+Total pins : 32 / 508 ( 6 % )
+Total virtual pins : 0
+Total memory bits : 968,192 / 6,635,520 ( 15 % )
+Embedded Multiplier 9-bit elements : 320 / 720 ( 44 % )
+Total GXB Receiver Channel PCS : 0 / 8 ( 0 % )
+Total GXB Receiver Channel PMA : 0 / 8 ( 0 % )
+Total GXB Transmitter Channel PCS : 0 / 8 ( 0 % )
+Total GXB Transmitter Channel PMA : 0 / 8 ( 0 % )
+Total PLLs : 0 / 8 ( 0 % )

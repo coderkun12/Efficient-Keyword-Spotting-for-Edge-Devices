@@ -101,10 +101,21 @@ module writeback #(
     reg [MULT_W-1:0]       mult_r  [0:M-1];
     reg [5:0]              shift_r [0:M-1];
 
-    integer ci;
+    // The loop counter is declared INSIDE the loop, not at module scope.
+    //
+    // As a module-scope `integer ci` this inferred a latch, and the tool was
+    // right to say so: the only loop over ci sits in the reset branch, so on
+    // the cfg_we path nothing assigns it and it holds its previous value.
+    // That is the definition of state, and Quartus built a register for a
+    // variable that is meant to vanish at elaboration.
+    //
+    // Note the contrast with m1 below, which is also module-scope but loops
+    // in BOTH branches, so it is never live across one -- which is exactly
+    // why that one drew no warning. The rule is not "module-scope integers
+    // are bad", it is "a variable live across a branch is state".
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
-            for (ci = 0; ci < M; ci = ci + 1) begin
+            for (int ci = 0; ci < M; ci = ci + 1) begin
                 bias_r[ci]  <= {ACC_W{1'b0}};
                 mult_r[ci]  <= {MULT_W{1'b0}};
                 shift_r[ci] <= 6'd0;
@@ -170,7 +181,13 @@ module writeback #(
                 else if (shifted > $signed(127))
                     s2_vec[m2*8 +: 8] <= 8'sd127;
                 else if (shifted < $signed(-128))
-                    s2_vec[m2*8 +: 8] <= -8'sd128;
+                    // 8'sh80, not -8'sd128. The latter does not fit: 8-bit
+                    // signed spans -128..127, so 8'sd128 overflows to -128
+                    // and negating THAT overflows again back to -128. It
+                    // reaches the right value by two wrongs cancelling, and
+                    // the tool flags it as a constant overflow. 8'sh80 is
+                    // the bit pattern for -128 stated directly.
+                    s2_vec[m2*8 +: 8] <= 8'sh80;
                 else
                     s2_vec[m2*8 +: 8] <= shifted[7:0];
             end

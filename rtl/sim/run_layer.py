@@ -12,7 +12,7 @@ ROOT = Path(__file__).resolve().parent.parent
 RTL = ROOT / "rtl_design"
 TB = ROOT / "tb"
 
-SOURCES = ["pe_int8.sv", "mac_array.sv", "band_sram.sv", "writeback.sv",
+SOURCES = ["pe_int8.sv", "mac_array.sv", "byte_ram.sv", "band_sram.sv", "writeback.sv",
            "layer_top.sv"]
 
 

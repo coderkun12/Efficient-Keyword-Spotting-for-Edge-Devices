@@ -1,0 +1,5 @@
+QUARTUS_VERSION = "25.1"
+
+# Revisions
+
+PROJECT_REVISION = "wmem_probe2"

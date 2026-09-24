@@ -1,0 +1,56 @@
+# ---------------------------------------------------------------------------
+# Memory-inference check for layer_top.
+#
+# PURPOSE: answer one question fast -- after the stage C1/C2 changes, does
+# Quartus map band_sram.mem and layer_top.wmem into M9K blocks instead of
+# building them out of logic?
+#
+# There are no pins and no harness here, deliberately. Analysis & Synthesis
+# alone reports RAM inference, and it runs in a few minutes; a full compile
+# would add the Fitter's work for an answer the synthesis report already has.
+# RUN ONLY "Analysis & Synthesis", not "Compile Design".
+#
+# WHAT TO LOOK FOR, in order of importance:
+#
+#   1. "Inferred N megafunctions" listing altsyncram for mem and wmem
+#   2. NO "RAM logic <name> is uninferred due to asynchronous read logic"
+#      -- that message naming mem or wmem means the fix did not take
+#   3. Total block memory bits in the resource summary. Expect roughly
+#      465 Kb (band, replicated 3x) + 147 Kb (weights) = ~612 Kb, which is
+#      about 9% of this device's 6,635,520 bits.
+#
+# rowacc is EXPECTED to stay in logic: it is read ASYNCHRONOUSLY at two
+# independent indices (oc to accumulate, flush_x to flush), which is a shape
+# no block RAM provides. It stays in flops, and MAXW is what sizes it.
+#
+# MAXW, MAX_KTILES and BAND_DEPTH are set in fpga/layer_fpga_cfg.sv, not
+# here. A wrapper cannot silently fail to apply the way a project-file
+# parameter can, and a stalled synthesis gives no clue which happened.
+# ---------------------------------------------------------------------------
+
+set_global_assignment -name FAMILY "Cyclone IV GX"
+set_global_assignment -name DEVICE EP4CGX150DF31C7
+set_global_assignment -name TOP_LEVEL_ENTITY layer_fpga_cfg
+
+set_global_assignment -name SYSTEMVERILOG_FILE ../layer_fpga_cfg.sv
+set_global_assignment -name SYSTEMVERILOG_FILE ../../rtl/rtl_design/layer_top.sv
+set_global_assignment -name SYSTEMVERILOG_FILE ../../rtl/rtl_design/byte_ram.sv
+set_global_assignment -name SYSTEMVERILOG_FILE ../../rtl/rtl_design/band_sram.sv
+set_global_assignment -name SYSTEMVERILOG_FILE ../../rtl/rtl_design/mac_array.sv
+set_global_assignment -name SYSTEMVERILOG_FILE ../../rtl/rtl_design/writeback.sv
+set_global_assignment -name SYSTEMVERILOG_FILE ../../rtl/rtl_design/pe_int8.sv
+
+# Same rationale as the stage A build: left on, Quartus pulls the output
+# deskew chain into RAM-backed altshift_taps, which silently drops its reset.
+set_global_assignment -name AUTO_SHIFT_REGISTER_RECOGNITION OFF
+
+set_global_assignment -name AUTO_DSP_RECOGNITION ON
+set_global_assignment -name AUTO_RAM_RECOGNITION ON
+set_global_assignment -name OPTIMIZATION_TECHNIQUE SPEED
+set_global_assignment -name NUM_PARALLEL_PROCESSORS 4
+
+set_global_assignment -name LAST_QUARTUS_VERSION "25.1std.0 Lite Edition"
+set_global_assignment -name PARTITION_NETLIST_TYPE SOURCE -section_id Top
+set_global_assignment -name PARTITION_FITTER_PRESERVATION_LEVEL PLACEMENT_AND_ROUTING -section_id Top
+set_global_assignment -name PARTITION_COLOR 16764057 -section_id Top
+set_instance_assignment -name PARTITION_HIERARCHY root_partition -to | -section_id Top

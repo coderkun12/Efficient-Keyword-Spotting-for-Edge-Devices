@@ -1,0 +1,18 @@
+Analysis & Synthesis Status : Successful - Wed Sep 23 12:32:08 2026
+Quartus Prime Version : 25.1std.0 Build 1129 10/21/2025 SC Lite Edition
+Revision Name : memcheck
+Top-level Entity Name : layer_fpga_cfg
+Family : Cyclone IV GX
+Total logic elements : 63,673
+    Total combinational functions : 35,892
+    Dedicated logic registers : 35,209
+Total registers : 35209
+Total pins : 280
+Total virtual pins : 0
+Total memory bits : 851,968
+Embedded Multiplier 9-bit elements : 322
+Total GXB Receiver Channel PCS : 0
+Total GXB Receiver Channel PMA : 0
+Total GXB Transmitter Channel PCS : 0
+Total GXB Transmitter Channel PMA : 0
+Total PLLs : 0

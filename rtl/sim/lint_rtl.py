@@ -15,6 +15,7 @@ so this adds the checks that matter for a clean P&R:
   L6  every module has an explicit default_nettype guard
   L7  no continuous assignment references a signal declared LATER in the file
   L8  no comment accidentally looks like a synthesis pragma
+  L9  no loop counter is left live across a branch (latch)
 
 This is a focused checker, not a Verilog parser. It errs toward reporting
 something for a human to look at rather than staying quiet.
@@ -160,6 +161,50 @@ def check_file(path, modules, findings):
                  f"'{t}' assigned only inside a branch of a combinational "
                  f"block -- infers a latch"))
 
+    # L9: a loop counter that survives a branch is state.
+    #
+    # Quartus found this in writeback before the lint did, because L2 above
+    # only inspects COMBINATIONAL blocks and this latch is in a clocked one:
+    #
+    #     integer ci;
+    #     always @(posedge clk or negedge rst_n)
+    #         if (!rst_n) for (ci = 0; ci < M; ci = ci + 1) ... ;
+    #         else if (cfg_we) ...            // never touches ci
+    #
+    # On the cfg_we path nothing assigns ci, so it holds its previous value,
+    # and synthesis builds a register for a variable meant to vanish at
+    # elaboration.
+    #
+    # The rule is NOT "module-scope integers are bad". A counter that loops in
+    # EVERY branch is dead at the end of each and infers nothing -- which is
+    # why writeback's m1, two declarations away, drew no warning at all. The
+    # rule is "live across a branch is state", and keeping that distinction
+    # sharp is what separates a check people act on from one they skim past.
+    scope_ints = set()
+    for m in re.finditer(r"^[ 	]*integer\s+([\w,\s]+);", text, re.M):
+        scope_ints.update(n.strip() for n in m.group(1).split(","))
+
+    ALWAYS_BLK = re.compile(
+        r"always\s*@\s*\([^)]*\)\s*begin(.*?)" + chr(10) + r"    end",
+        re.S)
+    ELSE_SPLIT = re.compile(chr(10) + r"\s*end else")
+
+    for blk in ALWAYS_BLK.finditer(text):
+        body = blk.group(1)
+        split = ELSE_SPLIT.search(body)
+        if not split:
+            continue
+        reset_part, rest_part = body[:split.start()], body[split.start():]
+        for name in sorted(scope_ints):
+            loop = re.compile(r"for\s*\(\s*" + re.escape(name) + r"\s*=")
+            if loop.search(reset_part) and not loop.search(rest_part):
+                findings.append(
+                    (path.name, "L9",
+                     f"loop counter '{name}' is assigned only in the reset "
+                     f"branch, so it stays live on every other path -- that "
+                     f"is state, and synthesis infers a latch. Declare it in "
+                     f"the loop instead: for (int {name} = ...)"))
+
     # L3/L4: driver counts for declared nets.
     #
     # A net counts as driven by ANY of: a continuous assign, a procedural
@@ -182,7 +227,19 @@ def check_file(path, modules, findings):
             decls[a] += 1
 
     # Procedural assignments, bracket-aware, anywhere on a line.
-    driven = set(re.findall(r"(\w+)\s*(?:\[[^;]*?\])?\s*(?:<=|=)(?![=>])", text))
+    #
+    # The index class excludes NEWLINE as well as ';'. With plain [^;] the
+    # index is allowed to run past the end of its own line and swallow the
+    # next statement: given
+    #
+    #     if (wr_en && (wr_row == gr[$clog2(ROWS)-1:0]))
+    #         m[{wr_bank, wr_addr}] <= wr_data;
+    #
+    # the match starts at 'gr', runs its index across the line break through
+    # 'm[{wr_bank, wr_addr}]', and credits the '<=' to gr -- leaving m looking
+    # undriven. That is a false L3 on correct code, and a lint that cries wolf
+    # is worse than no lint, because it teaches people to skim past it.
+    driven = set(re.findall(r"(\w+)\s*(?:\[[^;\n]*?\])?\s*(?:<=|=)(?![=>])", text))
     # Memory writes whose index itself contains brackets, e.g.
     #   linebuf[h_x[PW-1:0]] <= h_vec;
     # which the bracket-free pattern above cannot span. Assignment operators

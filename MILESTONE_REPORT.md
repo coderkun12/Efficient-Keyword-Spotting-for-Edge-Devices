@@ -3,8 +3,9 @@
 HW/SW co-design of an inference accelerator for `KeywordSpottingCNN`, taken
 from workload profiling through RTL to synthesized silicon on SAED14nm.
 
-**Status:** M1–M4 complete. 107/107 tests passing, structural lint clean,
-synthesized at 1 GHz with zero violating paths. M5 (FPGA emulation) planned.
+**Status:** M1–M5 complete. 129/129 tests passing, structural lint clean,
+synthesized at 1 GHz with zero violating paths. M5 (FPGA emulation) done:
+the array and a full fused layer both verified bit-exact on a DE2i-150.
 
 ![Roofline](Profiling/roofline_final.png)
 
@@ -177,7 +178,10 @@ The first sequencer serialized weight loads and drained between every k-tile:
 47.5% utilization. Overlapping the loads and removing the inter-tile drain
 raised it to **83.2%**.
 
-**Result:** 107/107 tests passing, lint clean, no X/Z on any signal.
+**Result at the time of M3:** 107/107 tests passing, lint clean, no X/Z on
+any signal. The suite has since grown to **129** -- the additional cases came
+from chasing the k-tile defect that M5 exposed, and they pin the parameter
+space the original 107 did not reach.
 
 ---
 
@@ -185,6 +189,16 @@ raised it to **83.2%**.
 
 **Tool:** Cadence Genus 17.14-s037_1. **Library:** SAED14nm RVT, typical corner,
 0.8 V, 25 °C. **Top:** `mac_array`, 16x16.
+
+> **These 14 nm results predate a subsequent RTL fix.** The reports in
+> `synthesis_mac_array_1GHz/` were generated on 22 Sep. On 23 Sep the FPGA
+> self-test exposed a defect in `mac_array`'s weight-commit skew (section
+> below), whose fix adds `K*(M-1)` = 240 one-bit flops -- roughly **+3% area**.
+> The numbers here therefore describe the **pre-fix** array. They have been
+> left as measured rather than adjusted, because a re-run on the university
+> RDP is the only honest way to update them. Timing closure at 1 GHz is
+> likewise unverified against the corrected RTL, though the added flops sit on
+> a simple shift path and are unlikely to be critical.
 
 | | 500 MHz | 1 GHz |
 | --- | --- | --- |
@@ -235,21 +249,58 @@ in the reference project.
 
 ---
 
-## M5 — FPGA emulation (planned)
+## M5 — FPGA emulation (done)
 
-**Purpose: emulate the ML kernel on the accelerator and run a handful of real
-inferences in hardware.** This is functional validation, not a performance
-result. The PPA result is the 14nm synthesis above.
+**Purpose: emulate the ML kernel on the accelerator in hardware.** This is
+functional validation, not a performance result. The PPA result is the 14nm
+synthesis above.
 
-| | Cyclone IV GX EP4CGX150 | mac_array needs |
-| --- | --- | --- |
-| Logic elements | 149,760 | ~25–30k |
-| Hard multipliers | 360 (18x18) | 256 (8x8) |
-| Block RAM | 6,480 Kb | 0 (array only) |
-| Registers | 149,760 | 17,071 |
+Two designs were built, programmed and verified on a Terasic DE2i-150
+(Cyclone IV GX EP4CGX150DF31C7):
 
-`mac_array` fits comfortably. A Spartan-6 would work on a larger part, but needs
-ISE 14.7, since Vivado never supported it.
+- **Stage A/B — the array alone.** 64 matrix-vector products against a Python
+  reference, first with random INT8 and then with the trained conv2 tile
+  (`features.3.weight`, INT8 scale 0.00239). 64/64, zero mismatches.
+- **Stage C — a full fused layer.** conv4 m-tile 0: 128 -> 16 channels, W=25,
+  H=10, all 72 k-tiles accumulated on the array, BatchNorm folded into the
+  requantiser, ReLU and 2x2 max-pool fused into the write-back. 60 pooled INT8
+  output vectors, **60/60, zero mismatches**, in 152,389 cycles. The weights
+  are the trained `features.11.weight`, verified byte-for-byte against the
+  checkpoint across all 18,432 ROM entries.
+
+**Scope, stated plainly.** This is one m-tile of one layer -- **2.47% of an
+inference's 186,220,800 MACs**. Activations are ROM-resident and fixed at
+synthesis time, so there is no runtime input path, and the global-average-pool
+and classifier stages were never implemented in RTL. The accelerator's
+convolution datapath is silicon-validated; the accelerator does not run the
+network.
+
+These are now **measured**, not projected -- read off the Quartus Fitter and
+Timing Analyzer, with both designs verified bit-exact on the board.
+
+| | Cyclone IV GX EP4CGX150 | stage A: array | stage C: full layer |
+| --- | --- | --- | --- |
+| Logic elements | 149,760 | 17,384 (12%) | 49,961 (33%) |
+| Registers | 149,760 | 14,971 (10%) | 32,832 (22%) |
+| Memory bits | 6,635,520 | 0 | 968,192 (15%) |
+| Multipliers (9-bit) | **720** | 256 (36%) | 320 (44%) |
+| Fmax, slow 85 C | — | ~69 MHz | ~51 MHz |
+| Verified outputs | — | 64/64, 0 errors | 60/60, 0 errors |
+
+**Correction to an earlier figure.** This table previously said *360 (18x18)*
+multipliers, making the array look like a 71% fit. Cyclone IV counts them in
+**9-bit elements** and this device has **720**; an 8x8 product occupies one. The
+real figure is **36%**, and the correction changes a conclusion: a **24x24**
+array (576 PEs) would also fit this board, where the earlier arithmetic said it
+could not.
+
+**Caveat on stage A's 17,384.** That build carries the real conv2 weights in
+ROM, and Quartus constant-propagated them -- trained weights cluster near zero,
+so several columns needed only 6-bit multipliers. The random-weight build came
+out at **~20,216 logic cells**, which is the honest cost of a general array.
+
+A Spartan-6 would work on a larger part, but needs ISE 14.7, since Vivado never
+supported it.
 
 **Do not quote FPGA latency as a speedup.** At 150 MHz an inference takes
 5.83 ms, which is *slower* than the laptop running INT8 software. Neither board
@@ -276,7 +327,7 @@ single-port reads — is the same change needed for SRAM macros on the ASIC side
 | Power | 52.45 mW active, 17.5 µW leakage | synthesized |
 | On-chip memory | 45.9 KiB vs 378.8 KiB naive | designed |
 | Array utilization | 83.2% | cycle model, RTL-calibrated |
-| Verification | 107/107 tests, lint clean | simulated |
+| Verification | 129/129 tests, lint clean | simulated |
 | Energy advantage | 893x vs optimized INT8 software | derived |
 | Efficiency | 9.76 TOPS/W | derived |
 
@@ -313,6 +364,65 @@ constrained by.
 
 ---
 
+## Why verification needs more than one stage
+
+The most useful thing this project produced is not a number. It is a worked
+example of **why pre-silicon simulation, FPGA emulation and post-silicon
+testing each catch a different class of defect**, and why skipping a stage does
+not mean the bugs were not there.
+
+Nine real defects were found. Here is which stage caught each, and -- more
+instructively -- why the earlier stages could not have.
+
+| # | defect | caught by | why earlier stages missed it |
+|---|---|---|---|
+| 1 | weight commit skewed by row but not by column | **FPGA layer self-test** | needs >=2 k-tiles AND W > 16; every unit test used <=2 channels and W <= 8 |
+| 2 | `band_sram` will not map to block RAM | **FPGA synthesis** | simulation has no concept of memory mapping |
+| 3 | weight memory will not map (4 failed fixes) | **FPGA synthesis** | ditto -- and Quartus reported *nothing*, it silently built 147 Kb of flip-flops |
+| 4 | inferred latch on a loop counter | **synthesis** | simulates identically; only the netlist differs |
+| 5 | constant overflow `-8'sd128` | **synthesis** | two overflows cancelled, so the simulated value was correct |
+| 6 | 40 MHz critical path (divide-by-9 -> 216-bit barrel shift -> MAC) | **static timing** | a functional simulation has no delays |
+| 7 | latent latch in `axis_result_fifo` | **lint, after synthesis taught us the pattern** | not in any build, so no tool had seen it |
+| 8 | band fill two channels short | simulation, while chasing #1 | the X it produced was masked by other tests' writes |
+| 9 | harness ROM pipeline off by one | simulation | — |
+
+### What each stage can and cannot see
+
+**Pre-silicon simulation** is exact where you point it and blind everywhere
+else. 129 tests passed at 100% while defect #1 sat in the design, because the
+suite explored a corner of the parameter space -- 1 to 2 channels, W <= 8 --
+that **no real layer occupies**. The model's actual layers need 18, 36 and 72
+k-tiles at widths of 101, 50 and 25. A passing test suite is evidence about
+the space it covers, and nothing at all about the space it does not.
+
+**Synthesis** sees structure that simulation cannot represent: latches, memory
+inference, mapping to real primitives. Four of the nine defects are invisible
+to any simulator, and three of those failed *silently* -- no error, no warning,
+just a design 357% over the device.
+
+**Static timing** sees what only exists after placement. The 40 MHz path was
+functionally perfect and would have passed every test ever written.
+
+**FPGA emulation** is the only stage that runs the **real design at real
+scale**, and that is exactly what found #1. Not because the FPGA is magic, but
+because building a system-level self-test forces the design into the
+configuration it will actually run -- which is a different thing from the
+configuration that is convenient to unit-test.
+
+**Post-silicon** remains the one stage not done here, and it sees what none of
+the above can: process variation across dies, real switching power against the
+estimate, temperature and voltage corners on actual metal. The 9.76 TOPS/W in
+this report is a synthesis estimate with an annotated activity factor. It is
+the honest number available at this stage, and it is not a measurement.
+
+### The cost of finding a bug late
+
+Defect #1 took roughly four hours to find and fix at the FPGA stage: a
+reproducible cocotb case, a probe of the accumulator, and two RTL edits. The
+same defect reaching silicon is a respin -- months and a mask set. That ratio
+is the entire economic argument for emulation, and this project happens to
+contain a clean instance of it.
+
 ## What remains
 
 | Item | Why |
@@ -329,7 +439,7 @@ constrained by.
 ## Reproducing
 
 ```bash
-python rtl/sim/run_all.py          # 107 tests
+python rtl/sim/run_all.py          # 129 tests
 python rtl/sim/lint_rtl.py         # structural lint
 python rtl/sim/layer_cycles.py     # cycle model
 python rtl/sim/speedup.py          # end-to-end speedup

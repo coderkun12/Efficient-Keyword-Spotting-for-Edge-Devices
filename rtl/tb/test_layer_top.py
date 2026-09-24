@@ -28,7 +28,8 @@ from cocotb.clock import Clock
 from cocotb.triggers import RisingEdge, Timer
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from ref_model import fused_writeback, to_signed  # noqa: E402
+from ref_model import (conv_layer, conv_row, fused_writeback,  # noqa: E402
+                       to_signed)
 from xscan import assert_no_floating  # noqa: E402
 
 CLK_NS = 2
@@ -53,42 +54,6 @@ def dims(dut):
 # ---------------------------------------------------------------------------
 # Golden model
 # ---------------------------------------------------------------------------
-
-def conv_row(band, weights, channels, width, m_count):
-    """One output row of a 3x3 same-padded convolution.
-
-    band[r][c][x] holds the three input rows already selected by the caller,
-    with rows outside the map passed in as zeros.
-    """
-    out = []
-    for x in range(width):
-        acc = []
-        for m in range(m_count):
-            total = 0
-            for c in range(channels):
-                for r in range(ROWS):
-                    for s in range(3):
-                        col = x - 1 + s
-                        if 0 <= col < width:
-                            total += weights[m][c * 9 + r * 3 + s] * band[r][c][col]
-            acc.append(total)
-        out.append(acc)
-    return out
-
-
-def conv_layer(fmap, weights, channels, height, width, m_count):
-    """Full layer accumulator stream, row-major, before requantisation."""
-    zero_row = [[0] * width for _ in range(channels)]
-    accs = []
-    for y in range(height):
-        band = []
-        for dy in (-1, 0, 1):
-            yy = y + dy
-            band.append([fmap[c][yy][:] for c in range(channels)]
-                        if 0 <= yy < height else [r[:] for r in zero_row])
-        accs.extend(conv_row(band, weights, channels, width, m_count))
-    return accs
-
 
 # ---------------------------------------------------------------------------
 # Driver
@@ -191,7 +156,12 @@ class Layer:
 
         mon = cocotb.start_soon(monitor())
 
-        win_channels = -(-(ktiles * self.k) // 9)      # ceil, channels touched
+        # +(WIN_CH-1): the window for the LAST k-tile reads channels
+        # ch_base, ch_base+1 and ch_base+2, so the two channels past the
+        # layer's last one are still addressed. Leaving them unwritten makes
+        # them read X, and X times a zero weight is still X in Verilog, so the
+        # poison reaches the accumulator. ceil(ktiles*K/9) alone is one short.
+        win_channels = -(-(ktiles * self.k) // 9) + 2
         zero_row = [[0] * width for _ in range(win_channels)]
 
         for y in range(height):
@@ -395,3 +365,351 @@ async def test_accumulator_no_overflow(dut):
         )
         dut._log.info(f"  {name}: {taps:5d} taps -> needs {needed:2d} bits, "
                       f"ACC_W={width_bits} OK")
+
+
+# ---------------------------------------------------------------------------
+# K-TILE DEPTH SWEEP
+#
+# Every case above uses 1 or 2 channels, which is at most TWO k-tiles -- even
+# test_ktile_accumulation, whose 2 channels give 18 taps and so ceil(18/16)=2.
+# The accelerator's real layers need 18 (conv2), 36 (conv3) and 72 (conv4).
+#
+# The FPGA harness runs 72 and mismatches. These walk the tile count up on a
+# small, fast geometry to find the first depth that breaks, which is a far
+# better question than "does conv4 work".
+# ---------------------------------------------------------------------------
+
+def build_fits(dut, channels, width):
+    """Can this elaborated build hold a layer of this shape?
+
+    run_layer.py builds small (MAX_KTILES=4, BAND_DEPTH=256) to keep the
+    regression fast; run_layer_fpga.py builds at the real sizes. The deeper
+    cases below are meaningless on the small build -- the weight memory and
+    the band simply are not there -- so they skip rather than fail, which
+    would otherwise report a configuration limit as an RTL defect.
+
+    Bounds come from the port widths, which are $clog2 of the parameters, so
+    they are upper bounds. That is the right direction: a case that fits the
+    bound but not the parameter still fails loudly.
+    """
+    k, m = dims(dut)
+    ktiles = -(-(channels * 9) // k)
+    band_depth = 1 << len(dut.bnd_wr_addr)
+    wmem_bytes = 1 << len(dut.wm_wr_addr)
+    win_channels = -(-(ktiles * k) // 9) + 2
+    return (ktiles * k * m <= wmem_bytes
+            and win_channels * width <= band_depth)
+
+
+async def _depth_case(dut, channels, note):
+    if not build_fits(dut, channels, 8):
+        dut._log.info(f"skipping {note}build too small for {channels} channels")
+        return
+    await run_case(dut, channels, 4, 8, relu=True, pool=True,
+                   rng=random.Random(0xD0 + channels), seed_note=note)
+
+
+@cocotb.test()
+async def test_ktiles_3(dut):
+    """4 channels = 36 taps = 3 k-tiles. One past what the suite covered."""
+    await _depth_case(dut, 4, "3 k-tiles: ")
+
+
+@cocotb.test()
+async def test_ktiles_4(dut):
+    """6 channels = 54 taps = 4 k-tiles."""
+    await _depth_case(dut, 6, "4 k-tiles: ")
+
+
+@cocotb.test()
+async def test_ktiles_6(dut):
+    """10 channels = 90 taps = 6 k-tiles."""
+    await _depth_case(dut, 10, "6 k-tiles: ")
+
+
+@cocotb.test()
+async def test_ktiles_18(dut):
+    """32 channels = 288 taps = 18 k-tiles -- conv2's real depth."""
+    await _depth_case(dut, 32, "18 k-tiles: ")
+
+
+# ---------------------------------------------------------------------------
+# WIDTH SWEEP at fixed depth.
+#
+# 32 channels passes at W=8 but fails at W=25. W=40 also fails, but that one
+# is expected: MAXW=32 sizes rowacc, and a row wider than MAXW has nowhere to
+# accumulate. These walk W up to find where a LEGAL width starts failing.
+# ---------------------------------------------------------------------------
+
+@cocotb.test()
+async def test_width_12(dut):
+    if not build_fits(dut, 32, 12):
+        dut._log.info('skipping: build too small')
+        return
+    await run_case(dut, 32, 4, 12, relu=True, pool=True,
+                   rng=random.Random(0x11), seed_note="W=12: ")
+
+
+@cocotb.test()
+async def test_width_16(dut):
+    if not build_fits(dut, 32, 16):
+        dut._log.info('skipping: build too small')
+        return
+    await run_case(dut, 32, 4, 16, relu=True, pool=True,
+                   rng=random.Random(0x16), seed_note="W=16: ")
+
+
+@cocotb.test()
+async def test_width_20(dut):
+    if not build_fits(dut, 32, 20):
+        dut._log.info('skipping: build too small')
+        return
+    await run_case(dut, 32, 4, 20, relu=True, pool=True,
+                   rng=random.Random(0x20), seed_note="W=20: ")
+
+
+@cocotb.test()
+async def test_width_25(dut):
+    if not build_fits(dut, 32, 25):
+        dut._log.info('skipping: build too small')
+        return
+    await run_case(dut, 32, 4, 25, relu=True, pool=True,
+                   rng=random.Random(0x25), seed_note="W=25: ")
+
+
+@cocotb.test()
+async def test_width_20_nopool(dut):
+    """W=20, 32 channels, pooling OFF.
+
+    Splits the failure: if this passes, the convolution and k-tile
+    accumulation are correct and the fault is in writeback's pooling stages.
+    If it fails too, the accumulator path is already wrong before pooling
+    ever sees it.
+    """
+    if not build_fits(dut, 32, 20):
+        dut._log.info('skipping: build too small')
+        return
+    await run_case(dut, 32, 4, 20, relu=True, pool=False,
+                   rng=random.Random(0x20), seed_note="W=20 nopool: ")
+
+
+# ---------------------------------------------------------------------------
+# COLUMN 18.
+#
+# With pooling off, W=20 / 32ch fails first at output 18 -- and with pooling
+# on it fails at pooled column 9, which is exactly input columns 18-19. W=16
+# passes only because it never reaches column 18. The width is not the
+# variable; the column is.
+#
+# These hold W=20 fixed and vary only the k-tile count, which separates "one
+# sweep goes wrong at column 18" from "the k-tile handover goes wrong".
+# ---------------------------------------------------------------------------
+
+@cocotb.test()
+async def test_col18_1ktile(dut):
+    """1 channel = 9 taps = 1 k-tile, W=20. No handover at all."""
+    await run_case(dut, 1, 4, 20, relu=True, pool=False,
+                   rng=random.Random(0x18), seed_note="1kt W=20: ")
+
+
+@cocotb.test()
+async def test_col18_2ktile(dut):
+    """2 channels = 18 taps = 2 k-tiles, W=20. One handover."""
+    await run_case(dut, 2, 4, 20, relu=True, pool=False,
+                   rng=random.Random(0x18), seed_note="2kt W=20: ")
+
+
+@cocotb.test()
+async def test_col18_4ktile(dut):
+    """6 channels = 54 taps = 4 k-tiles, W=20. Three handovers."""
+    if not build_fits(dut, 6, 20):
+        dut._log.info('skipping: build too small')
+        return
+    await run_case(dut, 6, 4, 20, relu=True, pool=False,
+                   rng=random.Random(0x18), seed_note="4kt W=20: ")
+
+
+@cocotb.test()
+async def test_col18_w17(dut):
+    """2 k-tiles, W=17: highest column is 16."""
+    await run_case(dut, 2, 4, 17, relu=True, pool=False,
+                   rng=random.Random(0x18), seed_note="2kt W=17: ")
+
+
+@cocotb.test()
+async def test_col18_w18(dut):
+    """2 k-tiles, W=18: highest column is 17."""
+    await run_case(dut, 2, 4, 18, relu=True, pool=False,
+                   rng=random.Random(0x18), seed_note="2kt W=18: ")
+
+
+@cocotb.test()
+async def test_col18_w19(dut):
+    """2 k-tiles, W=19: highest column is 18 -- the first suspect column."""
+    await run_case(dut, 2, 4, 19, relu=True, pool=False,
+                   rng=random.Random(0x18), seed_note="2kt W=19: ")
+
+
+# ---------------------------------------------------------------------------
+# SEED SWEEP at the failing geometry.
+#
+# W=17, 18 and 19 all pass with 2 k-tiles; only W=20 fails, and by a single
+# LSB on a single channel. That is not the shape of a structural fault -- it
+# is the shape of a rare, data-dependent arithmetic edge case. If some seeds
+# pass here, the width was never the variable.
+# ---------------------------------------------------------------------------
+
+
+@cocotb.test()
+async def test_seed_0(dut):
+    await run_case(dut, 2, 4, 20, relu=True, pool=False,
+                   rng=random.Random(0xA1), seed_note="seed 0xa1: ")
+
+
+@cocotb.test()
+async def test_seed_1(dut):
+    await run_case(dut, 2, 4, 20, relu=True, pool=False,
+                   rng=random.Random(0xB2), seed_note="seed 0xb2: ")
+
+
+@cocotb.test()
+async def test_seed_2(dut):
+    await run_case(dut, 2, 4, 20, relu=True, pool=False,
+                   rng=random.Random(0xC3), seed_note="seed 0xc3: ")
+
+
+@cocotb.test()
+async def test_seed_3(dut):
+    await run_case(dut, 2, 4, 20, relu=True, pool=False,
+                   rng=random.Random(0xD4), seed_note="seed 0xd4: ")
+
+
+@cocotb.test()
+async def test_seed_4(dut):
+    await run_case(dut, 2, 4, 20, relu=True, pool=False,
+                   rng=random.Random(0xE5), seed_note="seed 0xe5: ")
+
+
+@cocotb.test()
+async def test_probe_rvld_vs_flush(dut):
+    """Diagnostic: does a result land after the flush passed its column?
+
+    S_DRAIN waits LATENCY+2 cycles from the last window before flushing
+    rowacc. If that is short, a late result writes a rowacc entry the flush
+    has already read, and that column keeps a partial sum -- which is exactly
+    "the tail of the row is short by the last tile's contribution".
+
+    Counts r_vld per row (should be ktiles*W) and flags any r_vld seen while
+    the sequencer is in S_FLUSH or S_IDLE.
+    """
+    lay = Layer(dut)
+    await lay.reset()
+
+    channels, height, width = 2, 4, 20
+    taps   = channels * 9
+    ktiles = -(-taps // lay.k)
+    rng    = random.Random(0x18)
+
+    weights = rand_weights(lay.m, taps, rng)
+    await lay.write_weights(weights, ktiles)
+    await lay.write_requant([rng.randint(-2000, 2000) for _ in range(lay.m)],
+                            [rng.randint(16384, 65535) for _ in range(lay.m)],
+                            [rng.randint(20, 26) for _ in range(lay.m)])
+
+    stats = {"rvld": 0, "late": 0, "in_flush": 0}
+
+    async def probe():
+        while True:
+            await RisingEdge(dut.clk)
+            await Timer(1, unit="ps")
+            if is_high(dut.r_vld):
+                stats["rvld"] += 1
+                st = int(dut.state.value)
+                if st == 4:                      # S_FLUSH
+                    stats["in_flush"] += 1
+                elif st == 0:                    # S_IDLE
+                    stats["late"] += 1
+
+    cocotb.start_soon(probe())
+
+    fmap = rand_fmap(channels, height, width, rng)
+    await lay.run_layer(fmap, channels, height, width, ktiles,
+                        relu=True, pool=False)
+
+    expect = ktiles * width * height
+    dut._log.info(f"r_vld pulses     : {stats['rvld']} (expect {expect})")
+    dut._log.info(f"  during S_FLUSH : {stats['in_flush']}")
+    dut._log.info(f"  during S_IDLE  : {stats['late']}")
+    assert stats["rvld"] == expect, (
+        f"result count wrong: {stats['rvld']} vs {expect} -- the oc/rkt "
+        f"derivation counts r_vld pulses, so a miscount misassigns every "
+        f"subsequent result to the wrong tile AND the wrong column"
+    )
+    assert stats["in_flush"] == 0 and stats["late"] == 0, (
+        f"{stats['in_flush']} results arrived during S_FLUSH and "
+        f"{stats['late']} during S_IDLE -- S_DRAIN's LATENCY+2 wait is short"
+    )
+
+
+@cocotb.test()
+async def test_probe_rowacc(dut):
+    """Diagnostic: is rowacc wrong, or only the requantised output?
+
+    r_vld count and flush timing are both correct, so the mapping of results
+    to tiles and columns is right and the values themselves must be wrong.
+    This captures what writeback is actually fed -- rowacc[flush_x], the
+    pre-requantisation accumulator -- and compares it against conv_layer().
+
+    If these match, the fault is in writeback. If they differ, it is in the
+    array or the k-tile accumulation, and the first differing column says
+    where.
+    """
+    lay = Layer(dut)
+    await lay.reset()
+
+    channels, height, width = 2, 4, 20
+    taps   = channels * 9
+    ktiles = -(-taps // lay.k)
+    rng    = random.Random(0x18)
+
+    weights = rand_weights(lay.m, taps, rng)
+    await lay.write_weights(weights, ktiles)
+    await lay.write_requant([0] * lay.m, [1 << 14] * lay.m, [14] * lay.m)
+
+    seen = []
+
+    async def probe():
+        while True:
+            await RisingEdge(dut.clk)
+            await Timer(1, unit="ps")
+            if int(dut.state.value) == 4:            # S_FLUSH
+                raw = dut.u_wb.acc_vec.value.to_unsigned()
+                w = acc_w(dut)
+                seen.append((int(dut.flush_x.value),
+                             [to_signed((raw >> (m * w)) & ((1 << w) - 1), w)
+                              for m in range(lay.m)]))
+
+    cocotb.start_soon(probe())
+
+    fmap = rand_fmap(channels, height, width, rng)
+    await lay.run_layer(fmap, channels, height, width, ktiles,
+                        relu=True, pool=False)
+
+    want = conv_layer(fmap, weights, channels, height, width, lay.m)
+
+    dut._log.info(f"captured {len(seen)} flush beats, expected {height*width}")
+    bad = []
+    for i, (fx, got) in enumerate(seen):
+        exp = want[i]
+        if got != exp:
+            bad.append((i, fx, got, exp))
+
+    if bad:
+        dut._log.info(f"{len(bad)} of {len(seen)} accumulator values wrong")
+        for i, fx, got, exp in bad[:3]:
+            diff = [g - e for g, e in zip(got, exp)]
+            dut._log.info(f"  beat {i} flush_x={fx}")
+            dut._log.info(f"    got  {got}")
+            dut._log.info(f"    want {exp}")
+            dut._log.info(f"    diff {diff}")
+    assert not bad, f"{len(bad)} accumulator values wrong; first at beat {bad[0][0]}"

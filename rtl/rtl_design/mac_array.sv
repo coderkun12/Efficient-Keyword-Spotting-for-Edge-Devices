@@ -114,8 +114,33 @@ module mac_array #(
     endgenerate
 
     // -----------------------------------------------------------------------
-    // Weight-commit skew: same PIPE*k delay, so the commit travels down the
-    // array at exactly the speed of the data it must not overtake.
+    // Weight-commit skew, in BOTH dimensions.
+    //
+    // A row delay alone is not enough, and the reason is the horizontal hop.
+    // An activation presented at time t reaches PE(k,m) at
+    //
+    //     t + PIPE*k + m
+    //
+    // -- PIPE*k for the input skew, plus m because the value hops one COLUMN
+    // per cycle. If the commit is delayed by PIPE*k only, every PE in row k
+    // switches at c + PIPE*k, the PIPE*k terms cancel, and PE(k,m) uses the
+    // old weights only while m < c - t. The last columns therefore switch
+    // weights underneath data that is still travelling through them.
+    //
+    // HOW THIS PRESENTED, because it is subtle and survived 107 tests:
+    // with two or more k-tiles and W=20, the accumulator was wrong in a clean
+    // diagonal -- output column 18 wrong on channel 15 only, column 19 wrong
+    // on channels 14 and 15. Solving m >= c - t against that gives c - t = 14
+    // where M = 16 is needed, i.e. the commit landed exactly two columns
+    // early. A single k-tile has no commit and always passed; W <= 16 rows
+    // finished before the effect was reachable; and every pre-existing test
+    // used W <= 8, so none of them could see it.
+    //
+    // The fix is to let the commit travel the way the data does: down one row
+    // per PIPE cycles AND right one column per cycle, so PE(k,m) switches at
+    // c + PIPE*k + m. Cost is K*(M-1) = 240 one-bit flops, and nothing in
+    // throughput -- the alternative, stalling M cycles at every k-tile
+    // boundary, would cost 72 x M cycles per output row in conv4.
     // -----------------------------------------------------------------------
     wire w_switch_row [0:K-1];
 
@@ -132,6 +157,24 @@ module mac_array #(
                     else             sr <= {sr[DEPTH-2:0], w_switch};
                 end
                 assign w_switch_row[k] = sr[DEPTH-1];
+            end
+        end
+    endgenerate
+
+    // Column propagation: PE(k,m) commits one cycle after PE(k,m-1), matching
+    // the activation's one-column-per-cycle hop.
+    wire w_switch_cell [0:K-1][0:M-1];
+
+    generate
+        for (k = 0; k < K; k = k + 1) begin : g_wcol
+            assign w_switch_cell[k][0] = w_switch_row[k];
+            for (m = 1; m < M; m = m + 1) begin : g_wcol_m
+                reg sw_r;
+                always @(posedge clk or negedge rst_n) begin
+                    if (!rst_n) sw_r <= 1'b0;
+                    else        sw_r <= w_switch_cell[k][m-1];
+                end
+                assign w_switch_cell[k][m] = sw_r;
             end
         end
     endgenerate
@@ -163,7 +206,7 @@ module mac_array #(
                     .w_shift_en (w_shift_en),
                     .w_in       (w_v[k][m]),
                     .w_out      (w_v[k+1][m]),
-                    .w_switch   (w_switch_row[k]),
+                    .w_switch   (w_switch_cell[k][m]),
                     .a_in       (a_h[k][m]),
                     .a_out      (a_h[k][m+1]),
                     .psum_in    (p_v[k][m]),

@@ -1,0 +1,126 @@
+# ---------------------------------------------------------------------------
+# Quartus settings for the DE2i-150 mac_array self-test.
+#
+# Pin locations live in de2i150_pins.qsf, transcribed from the DE2i-150 FPGA
+# System User Manual v1.3, Tables 3-3, 3-4 and 3-6. Bring them in with
+# Assignments > Import Assignments, as described in fpga/README.md.
+# ---------------------------------------------------------------------------
+
+set_global_assignment -name FAMILY "Cyclone IV GX"
+set_global_assignment -name DEVICE EP4CGX150DF31C7
+set_global_assignment -name TOP_LEVEL_ENTITY de2i150_mac_top
+
+set_global_assignment -name SYSTEMVERILOG_FILE de2i150_mac_top.sv
+set_global_assignment -name SYSTEMVERILOG_FILE ../rtl/rtl_design/mac_array.sv
+set_global_assignment -name SYSTEMVERILOG_FILE ../rtl/rtl_design/pe_int8.sv
+set_global_assignment -name SDC_FILE de2i150_mac_top.sdc
+
+# The ROMs are initialised by $readmemb on the .txt files, whose paths resolve
+# relative to the PROJECT directory -- which is why the project must live in
+# fpga/ alongside them. No MIF_FILE registration is needed or wanted: the .mif
+# route (ram_init_file) does not build a ROM and left all three arrays
+# undriven.
+
+# Keep the output-deskew shift registers in logic.
+#
+# Left on, Quartus pulls them into altshift_taps, which is RAM-backed. The
+# deskew registers in mac_array.sv:185-196 have an async reset that clears
+# them, and a RAM-backed shift register cannot honour that -- the reset is
+# quietly dropped. Startup then streams whatever the RAM powered up with
+# through r_vec and r_vld, and a spurious r_vld corrupts the result counter.
+#
+# The design uses 11% of the registers on this part, so paying ~3,840 flops
+# to keep reset semantics is free.
+set_global_assignment -name AUTO_SHIFT_REGISTER_RECOGNITION OFF
+
+# Unused pins must be tri-stated. The default on some boards is to drive them
+# to ground, which on a populated board means driving against whatever else is
+# connected -- the DE2i-150 has SDRAM, flash, PCIe and video all wired up.
+set_global_assignment -name RESERVE_ALL_UNUSED_PINS "AS INPUT TRI-STATED"
+
+# 2.5 V, not 3.3 V: every LED and push-button on this board is a 2.5 V bank,
+# per the user manual. Only CLOCK_50 is 3.3 V, and de2i150_pins.qsf overrides
+# that one pin individually. This global value is the default applied to
+# anything without an explicit instance assignment.
+set_global_assignment -name STRATIX_DEVICE_IO_STANDARD "2.5 V"
+
+set_global_assignment -name CYCLONEII_OPTIMIZATION_TECHNIQUE SPEED
+set_global_assignment -name OPTIMIZATION_TECHNIQUE SPEED
+set_global_assignment -name MUX_RESTRUCTURE OFF
+
+# Let the fitter use the 18x18 multipliers. Without this the 256 INT8 products
+# land in logic elements and the design grows by roughly 10k LEs for no gain.
+set_global_assignment -name AUTO_DSP_RECOGNITION ON
+
+set_global_assignment -name NUM_PARALLEL_PROCESSORS 4
+
+set_location_assignment PIN_AJ16 -to CLOCK_50
+set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to CLOCK_50
+set_location_assignment PIN_AA26 -to KEY[0]
+set_instance_assignment -name IO_STANDARD "2.5 V" -to KEY[0]
+set_location_assignment PIN_AE25 -to KEY[1]
+set_instance_assignment -name IO_STANDARD "2.5 V" -to KEY[1]
+set_location_assignment PIN_AF30 -to KEY[2]
+set_instance_assignment -name IO_STANDARD "2.5 V" -to KEY[2]
+set_location_assignment PIN_AE26 -to KEY[3]
+set_instance_assignment -name IO_STANDARD "2.5 V" -to KEY[3]
+set_location_assignment PIN_AA25 -to LEDG[0]
+set_instance_assignment -name IO_STANDARD "2.5 V" -to LEDG[0]
+set_location_assignment PIN_AB25 -to LEDG[1]
+set_instance_assignment -name IO_STANDARD "2.5 V" -to LEDG[1]
+set_location_assignment PIN_F27 -to LEDG[2]
+set_instance_assignment -name IO_STANDARD "2.5 V" -to LEDG[2]
+set_location_assignment PIN_F26 -to LEDG[3]
+set_instance_assignment -name IO_STANDARD "2.5 V" -to LEDG[3]
+set_location_assignment PIN_W26 -to LEDG[4]
+set_instance_assignment -name IO_STANDARD "2.5 V" -to LEDG[4]
+set_location_assignment PIN_Y22 -to LEDG[5]
+set_instance_assignment -name IO_STANDARD "2.5 V" -to LEDG[5]
+set_location_assignment PIN_Y25 -to LEDG[6]
+set_instance_assignment -name IO_STANDARD "2.5 V" -to LEDG[6]
+set_location_assignment PIN_AA22 -to LEDG[7]
+set_instance_assignment -name IO_STANDARD "2.5 V" -to LEDG[7]
+set_location_assignment PIN_J25 -to LEDG[8]
+set_instance_assignment -name IO_STANDARD "2.5 V" -to LEDG[8]
+set_location_assignment PIN_T23 -to LEDR[0]
+set_instance_assignment -name IO_STANDARD "2.5 V" -to LEDR[0]
+set_location_assignment PIN_T24 -to LEDR[1]
+set_instance_assignment -name IO_STANDARD "2.5 V" -to LEDR[1]
+set_location_assignment PIN_V27 -to LEDR[2]
+set_instance_assignment -name IO_STANDARD "2.5 V" -to LEDR[2]
+set_location_assignment PIN_W25 -to LEDR[3]
+set_instance_assignment -name IO_STANDARD "2.5 V" -to LEDR[3]
+set_location_assignment PIN_T21 -to LEDR[4]
+set_instance_assignment -name IO_STANDARD "2.5 V" -to LEDR[4]
+set_location_assignment PIN_T26 -to LEDR[5]
+set_instance_assignment -name IO_STANDARD "2.5 V" -to LEDR[5]
+set_location_assignment PIN_R25 -to LEDR[6]
+set_instance_assignment -name IO_STANDARD "2.5 V" -to LEDR[6]
+set_location_assignment PIN_T27 -to LEDR[7]
+set_instance_assignment -name IO_STANDARD "2.5 V" -to LEDR[7]
+set_location_assignment PIN_P25 -to LEDR[8]
+set_instance_assignment -name IO_STANDARD "2.5 V" -to LEDR[8]
+set_location_assignment PIN_R24 -to LEDR[9]
+set_instance_assignment -name IO_STANDARD "2.5 V" -to LEDR[9]
+set_location_assignment PIN_P21 -to LEDR[10]
+set_instance_assignment -name IO_STANDARD "2.5 V" -to LEDR[10]
+set_location_assignment PIN_N24 -to LEDR[11]
+set_instance_assignment -name IO_STANDARD "2.5 V" -to LEDR[11]
+set_location_assignment PIN_N21 -to LEDR[12]
+set_instance_assignment -name IO_STANDARD "2.5 V" -to LEDR[12]
+set_location_assignment PIN_M25 -to LEDR[13]
+set_instance_assignment -name IO_STANDARD "2.5 V" -to LEDR[13]
+set_location_assignment PIN_K24 -to LEDR[14]
+set_instance_assignment -name IO_STANDARD "2.5 V" -to LEDR[14]
+set_location_assignment PIN_L25 -to LEDR[15]
+set_instance_assignment -name IO_STANDARD "2.5 V" -to LEDR[15]
+set_location_assignment PIN_M21 -to LEDR[16]
+set_instance_assignment -name IO_STANDARD "2.5 V" -to LEDR[16]
+set_location_assignment PIN_M22 -to LEDR[17]
+set_instance_assignment -name IO_STANDARD "2.5 V" -to LEDR[17]
+set_global_assignment -name PARTITION_NETLIST_TYPE SOURCE -section_id Top
+set_global_assignment -name PARTITION_FITTER_PRESERVATION_LEVEL PLACEMENT_AND_ROUTING -section_id Top
+set_global_assignment -name PARTITION_COLOR 16764057 -section_id Top
+set_global_assignment -name RESERVE_ALL_UNUSED_PINS_NO_OUTPUT_GND "AS OUTPUT DRIVING AN UNSPECIFIED SIGNAL"
+set_global_assignment -name LAST_QUARTUS_VERSION "25.1std.0 Lite Edition"
+set_instance_assignment -name PARTITION_HIERARCHY root_partition -to | -section_id Top

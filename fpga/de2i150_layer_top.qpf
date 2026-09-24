@@ -1,0 +1,5 @@
+QUARTUS_VERSION = "25.1"
+
+# Revisions
+
+PROJECT_REVISION = "de2i150_layer_top"
