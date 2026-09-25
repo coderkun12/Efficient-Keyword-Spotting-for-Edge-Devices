@@ -19,8 +19,8 @@ from pathlib import Path
 import torch
 import torch.nn as nn
 
-from dataset import get_dataloaders, NUM_CLASSES
-from model import KeywordSpottingCNN, count_parameters
+from software.src.dataset import get_dataloaders, NUM_CLASSES
+from software.src.model import KeywordSpottingCNN, count_parameters
 
 
 def parse_args():

@@ -28,10 +28,10 @@ from matplotlib.ticker import FuncFormatter
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT / "src"))
-from model import KeywordSpottingCNN  # noqa: E402
+from software.src.model import KeywordSpottingCNN  # noqa: E402
 
 try:
-    import dataset
+    import software.src.dataset as dataset
     N_MELS, NUM_CLASSES = dataset.N_MELS, dataset.NUM_CLASSES
 except Exception:
     N_MELS, NUM_CLASSES = 40, 12

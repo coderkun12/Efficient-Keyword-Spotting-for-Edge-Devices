@@ -20,7 +20,7 @@ from cocotb.clock import Clock
 from cocotb.triggers import RisingEdge, Timer
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from ref_model import pe_step, to_signed  # noqa: E402
+from hardware.rtl.tb.ref_model import pe_step, to_signed  # noqa: E402
 
 ACC_W = int(os.environ.get("ACC_W", 32))
 CLK_NS = 2  # 500 MHz, the design target

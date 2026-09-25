@@ -46,8 +46,8 @@ from pathlib import Path
 import torch
 import torch.nn as nn
 
-from dataset import get_dataloaders
-from benchmark import load_variant, evaluate_accuracy, total_parameters, format_size
+from software.src.dataset import get_dataloaders
+from software.src.benchmark import load_variant, evaluate_accuracy, total_parameters, format_size
 
 
 # Same block layout as prune.py / model.py: each tuple is the (conv, bn, relu)

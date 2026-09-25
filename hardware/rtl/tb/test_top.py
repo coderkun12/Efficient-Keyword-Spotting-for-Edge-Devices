@@ -29,8 +29,8 @@ from cocotbext.axi import (
 )
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from ref_model import matvec, random_activations, random_weights, to_signed  # noqa: E402
-from xscan import assert_no_floating  # noqa: E402
+from hardware.rtl.tb.ref_model import matvec, random_activations, random_weights, to_signed  # noqa: E402
+from hardware.rtl.tb.xscan import assert_no_floating  # noqa: E402
 
 CLK_NS = 2  # 500 MHz
 

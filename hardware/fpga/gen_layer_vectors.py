@@ -40,7 +40,7 @@ sys.path.insert(0, str(ROOT / "rtl" / "tb"))
 from ref_model import conv_layer, fused_writeback  # noqa: E402
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from gen_test_vectors import find_weight_source, write_mem  # noqa: E402
+from hardware.fpga.gen_test_vectors import find_weight_source, write_mem  # noqa: E402
 
 # Geometry of conv4 and of the array.
 K, M       = 16, 16

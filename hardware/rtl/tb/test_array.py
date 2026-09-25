@@ -27,7 +27,7 @@ from cocotb.clock import Clock
 from cocotb.triggers import RisingEdge, Timer
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from ref_model import (  # noqa: E402
+from hardware.rtl.tb.ref_model import (  # noqa: E402
     matvec, pack, random_activations, random_weights, to_signed,
     weight_shift_order,
 )

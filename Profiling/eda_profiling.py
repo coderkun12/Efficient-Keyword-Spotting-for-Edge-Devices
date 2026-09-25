@@ -47,7 +47,7 @@ if _MISSING:
 REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT / "src"))
 
-from model import KeywordSpottingCNN  # noqa: E402
+from software.src.model import KeywordSpottingCNN  # noqa: E402
 
 
 def load_dataset_config():
@@ -57,7 +57,7 @@ def load_dataset_config():
     so the model-side profiling still runs without torchaudio installed.
     """
     try:
-        import dataset
+        import software.src.dataset as dataset
         return dataset.N_MELS, dataset.NUM_CLASSES, True
     except Exception:
         return 40, 12, False

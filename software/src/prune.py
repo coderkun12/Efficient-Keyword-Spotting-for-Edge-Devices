@@ -6,9 +6,9 @@ from pathlib import Path
 import torch
 import torch.nn as nn
 import torch.nn.utils.prune as prune
-from dataset import get_dataloaders, NUM_CLASSES
-from model import KeywordSpottingCNN
-from benchmark import load_variant, count_nonzero_parameters, total_parameters, format_size
+from software.src.dataset import get_dataloaders, NUM_CLASSES
+from software.src.model import KeywordSpottingCNN
+from software.src.benchmark import load_variant, count_nonzero_parameters, total_parameters, format_size
 
 # Conv/BN index pairs:
 CONV_BN_PAIRS=[(0,1),(3,4),(7,8),(11,12)]

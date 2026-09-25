@@ -28,9 +28,9 @@ from cocotb.clock import Clock
 from cocotb.triggers import RisingEdge, Timer
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from ref_model import (conv_layer, conv_row, fused_writeback,  # noqa: E402
+from hardware.rtl.tb.ref_model import (conv_layer, conv_row, fused_writeback,  # noqa: E402
                        to_signed)
-from xscan import assert_no_floating  # noqa: E402
+from hardware.rtl.tb.xscan import assert_no_floating  # noqa: E402
 
 CLK_NS = 2
 ROWS = 3
