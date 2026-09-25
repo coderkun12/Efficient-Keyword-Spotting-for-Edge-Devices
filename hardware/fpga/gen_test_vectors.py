@@ -22,7 +22,8 @@ import random
 import sys
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = Path(__file__).resolve().parent.parent          # hardware/
+REPO_ROOT = ROOT.parent                                # repo root
 sys.path.insert(0, str(ROOT / "rtl" / "tb"))
 from ref_model import matvec, random_activations, random_weights, weight_shift_order  # noqa: E402
 
@@ -57,7 +58,7 @@ def find_weight_source(root, layer):
     """
     import numpy as np
 
-    npz = root / "results" / "checkpoints" / "conv_weights.npz"
+    npz = root / "software" / "results" / "checkpoints" / "conv_weights.npz"
     if npz.exists():
         d = np.load(npz)
         if layer in d:
@@ -66,7 +67,7 @@ def find_weight_source(root, layer):
         print(f"note      : {npz.name} has no '{layer}' "
               f"(has {', '.join(d.files)})")
 
-    ckpt = root / "results" / "checkpoints" / "baseline_best.pt"
+    ckpt = root / "software" / "results" / "checkpoints" / "baseline_best.pt"
     if not ckpt.exists():
         return None
 
@@ -137,7 +138,7 @@ def main():
     rng = random.Random(a.seed)
 
     weights = None
-    src = find_weight_source(ROOT, a.layer)
+    src = find_weight_source(REPO_ROOT, a.layer)
     if src is not None:
         import numpy as np
         flat, note = src
@@ -155,7 +156,7 @@ def main():
     if weights is None:
         weights = random_weights(a.m, a.k, rng)
         print(f"weights   : random, seed 0x{a.seed:X}")
-        print( "            (drop results/checkpoints/baseline_best.pt in place")
+        print( "            (drop software/results/checkpoints/baseline_best.pt")
         print( "             to use the trained model instead)")
 
     acts = random_activations(a.k, a.vectors, rng)

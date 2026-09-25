@@ -1,8 +1,8 @@
 # Profiling & Roofline Analysis
 
 HW/SW co-design inputs for `KeywordSpottingCNN`. All three scripts read
-`src/model.py` and `src/dataset.py` live, run on synthetic input, and need no
-dataset download and no trained checkpoint.
+`software/src/model.py` and `software/src/dataset.py` live, run on synthetic
+input, and need no dataset download and no trained checkpoint.
 
 ## Setup
 
@@ -10,8 +10,8 @@ dataset download and no trained checkpoint.
 pip install -r Profiling/requirements-profiling.txt
 ```
 
-`torchaudio` is optional. Without it the scripts fall back to `src/dataset.py`'s
-default constants (and say so in the report).
+`torchaudio` is optional. Without it the scripts fall back to
+`software/src/dataset.py`'s default constants (and say so in the report).
 
 ## Scripts
 
@@ -65,6 +65,7 @@ Key flags:
 ## Rerun after model changes
 
 The scripts import the model rather than hardcoding it, so after editing
-`src/model.py` (pruning, quantization, architecture changes) just run them again.
+`software/src/model.py` (pruning, quantization, architecture changes) just run
+them again.
 Note that **unstructured** pruning will not change the MAC counts -- the zeros
 still occupy the tensor. Structured/channel pruning will.

@@ -35,11 +35,14 @@ import random
 import sys
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = Path(__file__).resolve().parent.parent          # hardware/
+REPO_ROOT = ROOT.parent                                # repo root
 sys.path.insert(0, str(ROOT / "rtl" / "tb"))
 from ref_model import conv_layer, fused_writeback  # noqa: E402
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
+# The repo root, not fpga/: the import below is by package path, so the
+# directory that CONTAINS hardware/ has to be importable.
+sys.path.insert(0, str(REPO_ROOT))
 from hardware.fpga.gen_test_vectors import find_weight_source, write_mem  # noqa: E402
 
 # Geometry of conv4 and of the array.
@@ -70,7 +73,7 @@ def main():
 
     # ---- Weights: real conv4 tile if the checkpoint is there --------------
     import numpy as np
-    src = find_weight_source(ROOT, "conv4")
+    src = find_weight_source(REPO_ROOT, "conv4")
     if src is not None:
         flat, note = src
         scale = float(np.abs(flat).max()) / 127.0

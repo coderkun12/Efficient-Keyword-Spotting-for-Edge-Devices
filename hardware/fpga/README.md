@@ -130,7 +130,7 @@ correct results and drops one is broken, and comparing only the results that
 They are committed, so this is only needed if you change `K`, `M` or `NVEC`.
 
 ```bash
-python fpga/gen_test_vectors.py
+python hardware/fpga/gen_test_vectors.py
 ```
 
 `NVEC` in `de2i150_mac_top.sv` must match `--vectors`. The generator uses the
