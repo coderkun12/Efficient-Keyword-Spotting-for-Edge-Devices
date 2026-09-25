@@ -27,7 +27,7 @@ from cocotb.clock import Clock
 from cocotb.triggers import RisingEdge, Timer
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from hardware.rtl.tb.ref_model import (  # noqa: E402
+from ref_model import (  # noqa: E402
     matvec, pack, random_activations, random_weights, to_signed,
     weight_shift_order,
 )
@@ -307,12 +307,13 @@ async def test_real_conv2_weights(dut):
     """
     # cocotb 2.0 removed cocotb.result.TestSuccess, so a runtime skip is just
     # an early return with a clear log line.
-    ckpt = (Path(__file__).resolve().parents[2]
-            / "results" / "checkpoints" / "baseline_best.pt")
+    # parents[3] is the repo root: this file is hardware/rtl/tb/test_array.py.
+    ckpt = (Path(__file__).resolve().parents[3]
+            / "software" / "results" / "checkpoints" / "baseline_best.pt")
     if not ckpt.exists():
         dut._log.warning(
-            f"SKIPPED: no checkpoint at {ckpt}. "
-            "Run this suite on the machine holding results/checkpoints/."
+            f"SKIPPED: no checkpoint at {ckpt}. Run this suite on the "
+            "machine holding software/results/checkpoints/."
         )
         return
     try:

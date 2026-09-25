@@ -26,7 +26,7 @@ from cocotb.clock import Clock
 from cocotb.triggers import RisingEdge, Timer
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from hardware.rtl.tb.ref_model import fused_writeback, pack, to_signed  # noqa: E402
+from ref_model import fused_writeback, pack, to_signed  # noqa: E402
 
 CLK_NS = 2
 ACC_W = 32

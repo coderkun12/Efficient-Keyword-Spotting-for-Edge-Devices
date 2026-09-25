@@ -7,7 +7,7 @@ from workload profiling through RTL to synthesized silicon on SAED14nm.
 synthesized at 1 GHz with zero violating paths. M5 (FPGA emulation) done:
 the array and a full fused layer both verified bit-exact on a DE2i-150.
 
-![Roofline](Profiling/roofline_final.png)
+![Roofline](../Profiling/roofline_final.png)
 
 ---
 
@@ -439,10 +439,10 @@ contain a clean instance of it.
 ## Reproducing
 
 ```bash
-python rtl/sim/run_all.py          # 129 tests
-python rtl/sim/lint_rtl.py         # structural lint
-python rtl/sim/layer_cycles.py     # cycle model
-python rtl/sim/speedup.py          # end-to-end speedup
+python hardware/rtl/sim/run_all.py       # 129 tests
+python hardware/rtl/sim/lint_rtl.py      # structural lint
+python hardware/rtl/sim/layer_cycles.py  # cycle model
+python hardware/rtl/sim/speedup.py       # end-to-end speedup
 python Profiling/roofline_final.py # the plot above
 ```
 

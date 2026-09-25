@@ -43,9 +43,10 @@ if _MISSING:
         "right CUDA build for your machine)"
     )
 
-# Make src/ importable regardless of where the script is launched from.
+# Make the repo root importable regardless of where the script is launched
+# from, so the software.src.* package path resolves.
 REPO_ROOT = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(REPO_ROOT / "src"))
+sys.path.insert(0, str(REPO_ROOT))
 
 from software.src.model import KeywordSpottingCNN  # noqa: E402
 

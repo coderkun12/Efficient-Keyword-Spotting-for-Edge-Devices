@@ -39,7 +39,7 @@ if _MISSING:
              + "\nInstall with:  pip install " + " ".join(_MISSING))
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(REPO_ROOT / "src"))
+sys.path.insert(0, str(REPO_ROOT))
 from software.src.model import KeywordSpottingCNN  # noqa: E402
 
 try:

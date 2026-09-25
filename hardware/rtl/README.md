@@ -143,8 +143,8 @@ silent drop would look exactly like an arithmetic bug.
 
 ```bash
 pip install cocotb cocotbext-axi        # Icarus Verilog must be on PATH
-python rtl/sim/run_all.py               # full regression
-python rtl/sim/run_top.py 16 16         # just the AXI suite at the design point
+python hardware/rtl/sim/run_all.py       # full regression
+python hardware/rtl/sim/run_top.py 16 16 # just the AXI suite at the design point
 ```
 
 Tested with Icarus Verilog 11.0, cocotb 2.0.1, cocotbext-axi 0.1.28.
@@ -200,7 +200,7 @@ row is dropped, turning conv2's 40x101 into 20x50. Getting that wrong shifts
 every downstream feature by a pixel, which shows up as a quiet accuracy loss,
 so the suite asserts it directly on odd geometries.
 
-`python rtl/sim/speedup.py`:
+`python hardware/rtl/sim/speedup.py`:
 
 | Configuration | Accel | Host | Total | Kernel | System |
 | --- | --- | --- | --- | --- | --- |
@@ -215,7 +215,7 @@ its unpooled rate, reducing the interface bandwidth the chiplet needs.
 
 ## Synthesis and P&R readiness
 
-`python rtl/sim/lint_rtl.py` checks the structural failure modes that survive
+`python hardware/rtl/sim/lint_rtl.py` checks the structural failure modes that survive
 simulation and only bite at place-and-route:
 
 | | Check |

@@ -33,7 +33,7 @@ python Profiling/op_breakdown.py
 python Profiling/eda_profiling.py
 python Profiling/kws_analysis.py
 python Profiling/roofline.py --dataflow fused --array 16x16 --bytes-per-elem 1
-python src/benchmark.py --latency-runs 200 --warmup-runs 40
+python software/src/benchmark.py --latency-runs 200 --warmup-runs 40
 ```
 
 The last one needs the trained checkpoints and the dataset. Skip it if they are

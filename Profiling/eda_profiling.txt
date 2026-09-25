@@ -2,7 +2,7 @@
 EDA PROFILING REPORT -- Efficient Keyword Spotting for Edge Devices
 Model: KeywordSpottingCNN (baseline FP32, randomly initialised weights)
 ==========================================================================================
-Generated           : 2026-09-03 19:26:34
+Generated           : 2026-09-25 12:22:45
 Machine             : DESKTOP-K8PQA4Q
 Platform            : Windows-10-10.0.26200-SP0
 Processor           : Intel64 Family 6 Model 142 Stepping 12, GenuineIntel
@@ -18,7 +18,7 @@ NOTE                : src/dataset.py not importable (torchaudio missing); input 
 Layer (type:depth-idx)                   Output Shape              Param #                   Mult-Adds
 ===================================================================================================================
 KeywordSpottingCNN                       [1, 12]                   --                        --
-├─Sequential: 1-1                        [1, 64, 20, 50]           --                        --
+├─Sequential: 1-1                        [1, 128, 5, 12]           --                        --
 │    └─Conv2d: 2-1                       [1, 32, 40, 101]          320                       1,292,800
 │    └─BatchNorm2d: 2-2                  [1, 32, 40, 101]          64                        64
 │    └─ReLU: 2-3                         [1, 32, 40, 101]          --                        --
@@ -26,20 +26,26 @@ KeywordSpottingCNN                       [1, 12]                   --           
 │    └─BatchNorm2d: 2-5                  [1, 64, 40, 101]          128                       128
 │    └─ReLU: 2-6                         [1, 64, 40, 101]          --                        --
 │    └─MaxPool2d: 2-7                    [1, 64, 20, 50]           --                        --
-│    └─Conv2d: 2-8                       [1, 64, 20, 50]           36,928                    36,928,000
-│    └─BatchNorm2d: 2-9                  [1, 64, 20, 50]           128                       128
-│    └─ReLU: 2-10                        [1, 64, 20, 50]           --                        --
-├─AdaptiveAvgPool2d: 1-2                 [1, 64, 1, 1]             --                        --
-├─Linear: 1-3                            [1, 12]                   780                       780
+│    └─Conv2d: 2-8                       [1, 128, 20, 50]          73,856                    73,856,000
+│    └─BatchNorm2d: 2-9                  [1, 128, 20, 50]          256                       256
+│    └─ReLU: 2-10                        [1, 128, 20, 50]          --                        --
+│    └─MaxPool2d: 2-11                   [1, 128, 10, 25]          --                        --
+│    └─Conv2d: 2-12                      [1, 128, 10, 25]          147,584                   36,896,000
+│    └─BatchNorm2d: 2-13                 [1, 128, 10, 25]          256                       256
+│    └─ReLU: 2-14                        [1, 128, 10, 25]          --                        --
+│    └─MaxPool2d: 2-15                   [1, 128, 5, 12]           --                        --
+├─AdaptiveAvgPool2d: 1-2                 [1, 128, 1, 1]            --                        --
+├─Dropout: 1-3                           [1, 128]                  --                        --
+├─Linear: 1-4                            [1, 12]                   1,548                     1,548
 ===================================================================================================================
-Total params: 56,844
-Trainable params: 56,844
+Total params: 242,508
+Trainable params: 242,508
 Non-trainable params: 0
-Total mult-adds (Units.MEGABYTES): 112.95
+Total mult-adds (Units.MEGABYTES): 186.77
 ===================================================================================================================
 Input size (MB): 0.02
-Forward/backward pass size (MB): 7.23
-Params size (MB): 0.23
-Estimated Total Size (MB): 7.47
+Forward/backward pass size (MB): 8.77
+Params size (MB): 0.97
+Estimated Total Size (MB): 9.75
 ===================================================================================================================
 

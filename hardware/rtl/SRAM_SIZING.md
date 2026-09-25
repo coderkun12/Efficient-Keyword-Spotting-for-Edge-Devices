@@ -2,7 +2,7 @@
 
 Exit criterion for Task #6 in [`../ACCELERATOR_PLAN.md`](../ACCELERATOR_PLAN.md):
 the banding scheme and the SRAM it implies. Numbers are reproducible with
-`python rtl/sim/sram_sizing.py`.
+`python hardware/rtl/sim/sram_sizing.py`.
 
 ## The trap we are avoiding
 

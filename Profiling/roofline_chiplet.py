@@ -27,7 +27,7 @@ import matplotlib.pyplot as plt
 from matplotlib.ticker import FuncFormatter
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(REPO_ROOT / "src"))
+sys.path.insert(0, str(REPO_ROOT))
 from software.src.model import KeywordSpottingCNN  # noqa: E402
 
 try:
